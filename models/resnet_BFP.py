@@ -2,11 +2,9 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 import math
 import numpy as np
-# from .modules.BWPred import BWPred, estimator
-from .modules.layer_status import layer_status
-from .modules.layers import BFPQConv2d, BFPQLinear
-from .modules.BFPQConfig import Qconfig
-from .modules.BFPQscheme import BFPQScheme
+from .Q_modules.Q_core import *
+from .Q_modules.Q_params import Q_params
+from .Q_modules.Q_layers import BFPQConv2d, BFPQLinear
 
 __all__ = ['resnet_BFP']
 
@@ -29,33 +27,6 @@ def init_model(model):
 
     model.fc.weight.data.normal_(0, 0.01)
     model.fc.bias.data.zero_()
-
-def init_status(model):   # 对每一个conv2d和linear层，配置其量化器
-    total_layers = 0
-    for layer in model.modules():
-        if isinstance(layer, BFPQConv2d) or isinstance(layer, BFPQLinear):
-            # status = layer_status(
-            #                  block_size=Qconfig.block_size, 
-            #                  grad_smooth_gamma=Qconfig.grad_smooth_gamma,
-            #                  batch_size=Qconfig.batch_size,
-            #                  bw_smooth_beta=Qconfig.bw_smooth_beta,
-            #                  K = Qconfig.K,
-            #                  device=Qconfig.device)
-            # layer.set_status(status)
-            layer.status.block_size = Qconfig.block_size
-            layer.status.bw_block_size = Qconfig.bw_block_size
-            layer.status.grad_smooth_beta = (1/np.e)**(1/Qconfig.grad_smooth_gamma) - 0.01
-            layer.status.batch_size = Qconfig.batch_size
-            layer.status.bw_smooth_beta = Qconfig.bw_smooth_beta
-            layer.status.device = Qconfig.device
-            layer.status.init_bwmap(Qconfig.init_bwmap)
-            layer.status.stochastic = Qconfig.stochastic
-            layer.status.merge_block = Qconfig.merge_block
-            layer.status.layer_sparsity = Qconfig.layer_sparsity
-
-            layer.id = total_layers
-            total_layers += 1
-            layer.status.id = layer.id
             
 class BasicBlock_BFP(nn.Module):
     expansion = 1
@@ -159,26 +130,26 @@ class ResNet_BFP(nn.Module):
         x = self.fc(x)
         return x
     
-    def save_bwmap(self, bwmap_file):
-        bwmap_dict = {}
+    def save_q_params(self, q_params_file):
+        q_params_dict = {}
         for name, layer in self.named_modules():
             if isinstance(layer, BFPQConv2d) or isinstance(layer, BFPQLinear):    
-                bwmap_dict[name + '_W_bwmap'] = layer.status.bwmap['W']
-                bwmap_dict[name + '_GA_bwmap'] = layer.status.bwmap['GA']
-                bwmap_dict[name + '_W_latest_bwmap'] = layer.status.latest_bwmap['W']
-                bwmap_dict[name + '_GA_latest_bwmap'] = layer.status.latest_bwmap['GA']
-                bwmap_dict[name + '_W_int_bwmap'] = layer.status.int_bwmap['W']
-                bwmap_dict[name + '_GA_int_bwmap'] = layer.status.int_bwmap['GA']
-        np.save(bwmap_file, bwmap_dict)
+                q_params_dict[name + '_W_bwmap'] = layer.q_params.bwmap['W']
+                q_params_dict[name + '_bA_bwmap'] = layer.q_params.bwmap['bA']
+                q_params_dict[name + '_W_int_bwmap'] = layer.q_params.int_bwmap['W']
+                q_params_dict[name + '_bA_int_bwmap'] = layer.q_params.int_bwmap['bA']
+                q_params_dict[name + '_W_sensitivity'] = layer.q_params.sensitivity['W']
+                q_params_dict[name + '_bA_sensitivity'] = layer.q_params.sensitivity['bA']
+        np.save(q_params_file, q_params_dict)
 
-    def load_bwmap(self, bwmap_file):
-        bwmap_dict = np.load(bwmap_file, allow_pickle=True).item()
+    def load_bwmap(self, q_params_file):
+        q_params_dict = np.load(q_params_file, allow_pickle=True).item()
         for name, layer in self.named_modules():
             if isinstance(layer, BFPQConv2d) or isinstance(layer, BFPQLinear):    
-                layer.status.bwmap['W'] = bwmap_dict[name + '_W_bwmap'] 
-                layer.status.bwmap['GA'] = bwmap_dict[name + '_GA_bwmap']
-                layer.status.latest_bwmap['W'] = bwmap_dict[name + '_W_latest_bwmap']
-                layer.status.latest_bwmap['GA'] = bwmap_dict[name + '_GA_latest_bwmap']            
+                layer.q_params.bwmap['W'] = q_params_dict[name + '_W_bwmap'] 
+                layer.q_params.bwmap['bA'] = q_params_dict[name + '_bA_bwmap']
+                layer.q_params.sensitivity['W'] = q_params_dict[name + '_W_sensitivity']
+                layer.q_params.sensitivity['bA'] = q_params_dict[name + '_bA_sensitivity']            
 
     @staticmethod
     def regularization(model, weight_decay=1e-4):
@@ -207,7 +178,6 @@ class ResNet_imagenet_BFP(ResNet_BFP):
         self.fc = BFPQLinear(512 * block.expansion, num_classes)
 
         init_model(self)
-        init_status(self)
 
         self.regime = [
             {'epoch': 0, 'optimizer': 'SGD', 'lr': 1e-1,
@@ -236,7 +206,6 @@ class ResNet_cifar100_BFP(ResNet_BFP):
         self.fc = BFPQLinear(512 * block.expansion, num_classes, bias=True)
         self.diff = None
         init_model(self)
-        init_status(self)
 
         self.regime = [
             {'epoch': 0, 'optimizer': 'SGD', 'lr': 1e-1,
@@ -266,6 +235,7 @@ class ResNet_cifar100_BFP_simple(ResNet_BFP):
         self.fc = BFPQLinear(64, num_classes, bias=True)
 
         init_model(self)
+
         self.regime = [
             {'epoch': 0, 'optimizer': 'SGD', 'lr': 1e-1,
              'weight_decay': 5e-4, 'momentum': 0.9},

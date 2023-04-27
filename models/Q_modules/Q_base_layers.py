@@ -18,7 +18,7 @@ idx = 0
 
 cur_dir = os.path.abspath(os.path.curdir)
 
-cudnn_convolution = load(name='cudnn_convolution', sources=['/home/wch/release_project/OBAQ/quantized.pytorch/models/modules/cudnn_convolution.cpp'], verbose=True)
+cudnn_convolution = load(name='cudnn_convolution', sources=['./exts/cudnn_convolution.cpp'], verbose=True)
 
 class BFP_conv2d(InplaceFunction):
     @staticmethod
