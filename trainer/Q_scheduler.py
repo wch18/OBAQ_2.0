@@ -1,18 +1,17 @@
 import torch
 import torch.nn as nn
 from .Q_scheme import Q_Scheme
-from ..models.Q_modules.Q_optimizer import Q_optimizer
+from ..models.Q_modules.Q_optimizer import Q_Optimizer
 
 class Q_Scheduler:
     '''
     Quantization Scheduler Module:
     
     '''
-    def __init__(self, q_optimizer:Q_optimizer=Q_optimizer(), q_scheme=Q_Scheme(), cur_epoch=0) -> None:
+    def __init__(self, q_optimizer:Q_Optimizer=None, q_scheme:Q_Scheme=None, cur_epoch=0) -> None:
         self.q_optimizer = q_optimizer
         self.q_scheme = q_scheme
         self.cur_epoch = cur_epoch
-
         self.register()
 
     def step(self):

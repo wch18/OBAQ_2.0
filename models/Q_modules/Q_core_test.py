@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from Q_core import *
-from einops import rearrange, repeat, reduce
+# from einops import rearrange, repeat, reduce
 import torch.nn.functional as F
 import time
 import numpy as np

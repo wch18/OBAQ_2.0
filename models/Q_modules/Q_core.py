@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np 
 
-from einops import rearrange, repeat, reduce
+# from einops import rearrange, repeat, reduce
 
 ''' Q_core.py
     Implemented some core modules & methods which are required for quantization, including:

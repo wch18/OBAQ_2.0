@@ -9,9 +9,9 @@ from typing import Sequence
 def lerp(a: float, b: float, t: float) -> float:
     return (1 - t) * a + t * b
 
-class Q_optimizer():
+class Q_Optimizer():
     def __init__(self, q_params_list:Sequence[Q_params], 
-                 bwmap_smooth:float =0.5, 
+                 bwmap_smooth:float=0.5, 
                  K_update_mode:str ='BinarySearch',
                  target_bit_W = 2,
                  target_bit_bA = 2) -> None:

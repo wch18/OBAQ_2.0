@@ -99,6 +99,7 @@ class Bottleneck_BFP(nn.Module):
 class ResNet_BFP(nn.Module):
     def __init__(self):
         super(ResNet_BFP, self).__init__()
+    
     def _make_layer(self, block, planes, blocks, stride=1):
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
@@ -129,6 +130,13 @@ class ResNet_BFP(nn.Module):
         x = x.view(x.size(0), -1)
         x = self.fc(x)
         return x
+    
+    def q_params_list(self):
+        q_params_list = []
+        for m in self.modules():
+            if isinstance(m, BFPQConv2d) or isinstance(m, BFPQLinear):
+                q_params_list.append(m.q_params)
+        return q_params_list
     
     def save_q_params(self, q_params_file):
         q_params_dict = {}

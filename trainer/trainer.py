@@ -43,33 +43,43 @@ class Trainer:
     Trainer:
     '''
     def __init__(self, model, scheduler:Scheduler, q_scheduler:Q_Scheduler, criterion, 
-                 train_loader, test_loader, device='cuda:0',
-                 training_log:TrainingLog=TrainingLog(), log_freq=10, save_mode='best'):
+                 train_loader, test_loader, device='cuda:0', 
+                 training_log:TrainingLog=TrainingLog(), log_freq=10):
         ### 
         self.model = model
         self.scheduler = scheduler
         self.q_scheduler = q_scheduler
         self.criterion = criterion
         self.train_loader = train_loader
+        self.test_loader = test_loader
         self.device = device
         self.training_log = training_log
         self.log_freq = log_freq
-        self.save_mode = save_mode
+        self.best_prec = 0
         ### 
 
-    def train(self):
-        pass
+    def register(self):
+        self.model.register()
 
-    def test(self):
-        pass
+    def train(self, epoch):
+        return self.forward(self, epoch=epoch,
+                            dataloader=self.train_loader, train=True)
 
-    def forward(self, dataloader, train=True):
+    def test(self, epoch):
+        return self.forward(self, epoch=epoch,
+                            dataloader=self.test_loader, train=False)
+
+    def forward(self, epoch, 
+                dataloader, train=True):
+
         if train:
             self.model.train()
         else:
             self.model.eval()
 
         self.training_log.reset()
+
+        self.scheduler.update_epoch(epoch)
 
         for batch, (inputs, labels) in enumerate(dataloader):
             
@@ -90,9 +100,6 @@ class Trainer:
 
             if batch % self.log_freq == 0:
                 self.training_log.log(batch)
-            
-            if self.save_mode == 'best':
-                pass
 
     def save_state(self, state_dir):
         pass
