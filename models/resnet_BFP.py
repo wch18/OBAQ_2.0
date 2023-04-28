@@ -149,13 +149,31 @@ class ResNet_BFP(nn.Module):
                 layer.q_params.bwmap['W'] = q_params_dict[name + '_W_bwmap'] 
                 layer.q_params.bwmap['bA'] = q_params_dict[name + '_bA_bwmap']
                 layer.q_params.sensitivity['W'] = q_params_dict[name + '_W_sensitivity']
-                layer.q_params.sensitivity['bA'] = q_params_dict[name + '_bA_sensitivity']            
+                layer.q_params.sensitivity['bA'] = q_params_dict[name + '_bA_sensitivity']
+
+    def train(self):
+        super().train()
+        for m in self.modules():
+            if isinstance(m, BFPQConv2d) or isinstance(m, BFPQLinear):
+                m.q_params.state = 'train'
+
+    def eval(self):
+        super().eval()
+        for m in self.modules():
+            if isinstance(m, BFPQConv2d) or isinstance(m, BFPQLinear):
+                m.q_params.state = 'eval'
+
+    def register(self):
+        super().eval()
+        for m in self.modules():
+            if isinstance(m, BFPQConv2d) or isinstance(m, BFPQLinear):
+                m.q_params.state = 'reg'
 
     @staticmethod
     def regularization(model, weight_decay=1e-4):
         l2_params = 0
         for m in model.modules():
-            if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+            if isinstance(m, BFPQConv2d) or isinstance(m, BFPQLinear):
                 l2_params += m.weight.pow(2).sum()
                 if m.bias is not None:
                     l2_params += m.bias.pow(2).sum()

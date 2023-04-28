@@ -29,3 +29,9 @@ class Q_Scheduler:
         self.q_optimizer.target_bit_W = self.q_scheme.target_bit_W
         self.q_optimizer.target_bit_bA = self.q_scheme.target_bit_bA
 
+    def train(self):
+        pass
+
+    def eval(self):
+        pass
+
