@@ -13,14 +13,14 @@ class BFPQConv2d(nn.Conv2d):
         self.q_params = Q_params()
 
     def forward(self, input):
-        output = BFP_conv2d.apply(input, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups, self.status)
+        output = BFP_conv2d.apply(input, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups, self.q_params)
         return output
         
 class BFPQLinear(nn.Linear):
     def __init__(self, in_features, out_features, bias=True):
         super(BFPQLinear, self).__init__(in_features, out_features, bias)
-        self.status = Q_params()
+        self.q_params = Q_params()
 
     def forward(self, input):
-        output = BFP_linear.apply(input, self.weight, self.bias, self.status)
+        output = BFP_linear.apply(input, self.weight, self.bias, self.q_params)
         return output

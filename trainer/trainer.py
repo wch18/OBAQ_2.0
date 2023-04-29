@@ -2,8 +2,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from utils import meters
-from scheduler import Scheduler
-from Q_scheduler import Q_Scheduler
+from .scheduler import Scheduler
+from .Q_scheduler import Q_Scheduler
+import time
 
 def get_optimizer(optimizer_name, params):
     if optimizer_name == 'SGD':
@@ -58,40 +59,42 @@ class Trainer:
         self.best_prec = 0
         ### 
 
-    def register(self):
+    def register(self, dummy_input):
         self.model.register()
+        self.model(dummy_input)
+        self.q_scheduler.register()
+        print('Q_Scheduler Register Done.')
 
     def train(self, epoch):
-        return self.forward(self, epoch=epoch,
-                            dataloader=self.train_loader, train=True)
+        self.forward(epoch=epoch, dataloader=self.train_loader, train=True)
 
     def test(self, epoch):
-        return self.forward(self, epoch=epoch,
-                            dataloader=self.test_loader, train=False)
+        self.forward(epoch=epoch, dataloader=self.test_loader, train=False)
 
-    def forward(self, epoch, 
-                dataloader, train=True):
+    def forward(self, epoch, dataloader, train=True):
 
         if train:
             self.model.train()
+            self.scheduler.update_epoch(epoch)
         else:
             self.model.eval()
 
         self.training_log.reset()
-
-        self.scheduler.update_epoch(epoch)
-
+        gpu_mem = torch.cuda.memory_allocated(device='cuda:0')
+        print(gpu_mem)
+        time.sleep(5)
         for batch, (inputs, labels) in enumerate(dataloader):
             
             self.scheduler.zero_grad()
-            
             inputs = inputs.to(self.device)
             labels = labels.to(self.device)
             outputs = self.model(inputs)
             loss = self.criterion(outputs, labels)
-            loss.backward()
+            
+            if train:
+                loss.backward()
+                self.scheduler.step()
 
-            self.scheduler.step()
             prec = meters.accuracy(outputs.detach(), labels, (1, 5))
 
             self.training_log.losses.update(loss)
@@ -100,7 +103,9 @@ class Trainer:
 
             if batch % self.log_freq == 0:
                 self.training_log.log(batch)
-
+        gpu_mem = torch.cuda.memory_allocated(device='cuda:0')
+        print(gpu_mem)
+        time.sleep(5)
     def save_state(self, state_dir):
         pass
 

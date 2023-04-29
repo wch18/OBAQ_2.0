@@ -25,10 +25,28 @@ class BFP_conv2d(InplaceFunction):
     def forward(ctx, input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1, q_params:Q_params=Q_params(), quantize_grad=True):
         ctx.input = input
         ctx.weight = weight
+        ctx.bias = bias
         ctx.args = stride, padding, dilation, groups
         ctx.q_params = q_params
         ctx.quantize_grad = quantize_grad
+        
+        if q_params.state == 'reg':
+            output = F.conv2d(input, weight, bias, stride=stride, padding=padding, dilation=dilation, groups=groups)
+            device = output.device
+            q_params.computations['W'] = np.product(weight.shape) // 32 * output.shape[-1] * output.shape[-2] # Computation_W = Cin * Cout * K * K * Hout * Wout
+            q_params.computations['bA'] = np.product(input.shape) // 32 * input.shape[-1] * input.shape[-2]   # Computation_bA = Cin * Cout * K * K * Hin * Win
+            q_params.C_W = output.shape[2]  
+            q_params.C_bA = np.sqrt(weight.shape[0]) * weight.shape[2]
 
+            W_BFPshape = get_BFP_shape(weight.shape, q_params.block_size['W'])
+            q_params.sensitivity['W'] = torch.zeros(size=W_BFPshape, device=device)
+            bA_BFPshape = get_BFP_shape(input.shape, q_params.block_size['bA'])
+            q_params.sensitivity['bA'] = torch.zeros(size=bA_BFPshape, device=device)
+            A_BFPshape = bA_BFPshape
+            q_params.sensitivity['A'] = torch.zeros(size=A_BFPshape, device=device)
+            G_BFPshape = get_BFP_shape(output.shape, q_params.block_size['G'])
+            q_params.sensitivity['G'] = torch.zeros(size=G_BFPshape, device=device)
+        
         A_sparsity_counter = q_params.sparsity_counter['A']
         W_sparsity_counter = q_params.sparsity_counter['W']
 
@@ -45,11 +63,6 @@ class BFP_conv2d(InplaceFunction):
                         stride=stride, padding=padding, dilation=dilation, groups=groups)
         
         # registration 
-        if q_params.state == 'reg':
-            q_params.computations['W'] = np.product(weight.shape) // 32 * output.shape[-1] * output.shape[-2] # Computation_W = Cin * Cout * K * K * Hout * Wout
-            q_params.computations['bA'] = np.product(input.shape) // 32 * input.shape[-1] * input.shape[-2]   # Computation_bA = Cin * Cout * K * K * Hin * Win
-            q_params.C_W = output.shape[2]  
-            q_params.C_bA = np.sqrt(weight.shape[0]) * weight.shape[2]
 
         return output
     
@@ -58,6 +71,7 @@ class BFP_conv2d(InplaceFunction):
         q_params:Q_params = ctx.q_params
         input = ctx.input
         weight = ctx.weight
+        bias = ctx.bias
         stride, padding, dilation, groups = ctx.args
         input_size = input.shape
         weight_size = weight.shape
@@ -100,9 +114,9 @@ class BFP_conv2d(InplaceFunction):
         
         ### Sensitivity Analysis
         if q_params.state == 'train':
-            W_sensitivity = Sensitivity_Analysis(weight, grad_weight, W_block_size, q_params.C_W)
+            W_sensitivity = Sensitivity_Analysis(data=weight, grad=grad_weight, block_size=W_block_size, C=q_params.C_W)
             q_params.sensitivity['W'] += W_sensitivity
-            bA_sensitivity = Sensitivity_Analysis(input, grad_input, bA_block_bw, q_params.C_bA)
+            bA_sensitivity = Sensitivity_Analysis(data=input, grad=grad_input, block_size=bA_block_size, C=q_params.C_bA)
             q_params.sensitivity['bA'] += bA_sensitivity
             
         return grad_input, grad_weight, grad_bias, None, None, None, None, None, None
@@ -116,17 +130,37 @@ class BFP_linear(InplaceFunction):
         ctx.q_params = q_params
         ctx.quantize_grad = quantize_grad
 
+        expand_input = input.unsqueeze(-1).unsqueeze(-1)
+        expand_weight = weight.unsqueeze(-1).unsqueeze(-1)
+
+        if q_params.state == 'reg':
+            output = F.linear(input, weight, bias)
+            device = output.device
+            expand_output = output.unsqueeze(-1).unsqueeze(-1)
+
+            q_params.computations['W'] = np.product(expand_weight.shape) // 32 * output.shape[-1] # C_W = Cin * Cout * K * K * Hout * Wout
+            q_params.computations['bA'] = np.product(expand_input.shape) // 32 * input.shape[-1]   # C_A = Cin * Cout * K * K *Hin * Win
+
+            W_BFPshape = get_BFP_shape(expand_weight.shape, q_params.block_size['W'])
+            q_params.sensitivity['W'] = torch.zeros(size=W_BFPshape, device=device)
+            bA_BFPshape = get_BFP_shape(expand_input.shape, q_params.block_size['bA'])
+            q_params.sensitivity['bA'] = torch.zeros(size=bA_BFPshape, device=device)
+            A_BFPshape = bA_BFPshape
+            q_params.sensitivity['A'] = torch.zeros(size=A_BFPshape, device=device)
+            G_BFPshape = get_BFP_shape(expand_output.shape, q_params.block_size['G'])
+            q_params.sensitivity['G'] = torch.zeros(size=G_BFPshape, device=device)
+
+            return output
+
         A_sparsity_counter = q_params.sparsity_counter['A']
         W_sparsity_counter = q_params.sparsity_counter['W']
 
         # forward activation quantization
-        expand_input = input.unsqueeze(-1).unsqueeze(-1)
         A_block_size, A_block_bw = q_params.block_size['A'], q_params.int_bwmap['A']
         forward_q_input = BFPQuant(expand_input, A_block_size, A_block_bw, sparsity_counter=A_sparsity_counter)
         forward_q_input = forward_q_input.squeeze(-1).squeeze(-1)
 
         # forward weight quantization
-        expand_weight = weight.unsqueeze(-1).unsqueeze(-1)
         W_block_size, W_block_bw = q_params.block_size['W'], q_params.int_bwmap['W']
         forward_q_weight = BFPQuant(expand_weight, W_block_size, W_block_bw, sparsity_counter=W_sparsity_counter)
         forward_q_weight = forward_q_weight.squeeze(-1).squeeze(-1)
@@ -134,10 +168,6 @@ class BFP_linear(InplaceFunction):
         forward_q_bias = bias
         
         output = F.linear(forward_q_input, forward_q_weight, forward_q_bias)    
-
-        if q_params.state == 'reg':
-            q_params.computations['W'] = np.product(W_block_bw.shape) // 32 * output.shape[-1] # C_W = Cin * Cout * K * K * Hout * Wout
-            q_params.computations['GA'] = np.product(A_block_bw.shape) // 32 * input.shape[-1]   # C_A = Cin * Cout * K * K *Hin * Win
 
         return output
 
@@ -193,10 +223,11 @@ class BFP_linear(InplaceFunction):
             grad_bias = None
         
         if q_params.state == 'train':
-            W_sensitivity = Sensitivity_Analysis(expand_weight, grad_weight.unqueeze(-1).unsqueeze(-1), block_size=W_block_size, C=q_params.C_W)
+            W_sensitivity = Sensitivity_Analysis(expand_weight, grad_weight.unsqueeze(-1).unsqueeze(-1), block_size=W_block_size, C=q_params.C_W)
             q_params.sensitivity['W'] += W_sensitivity
             bA_sensitivity = Sensitivity_Analysis(expand_input, grad_input.unsqueeze(-1).unsqueeze(-1), block_size=bA_block_size, C=q_params.C_bA)
             q_params.sensitivity['bA'] += bA_sensitivity
+
         return grad_input, grad_weight, grad_bias, None, None
 
 

@@ -31,7 +31,7 @@ class Q_Optimizer():
 
     def update(self):
         # Top level update call
-
+        
         # update Weight bwmap
         self.K_W = self.K_update(target_bit=self.target_bit_W, datatype='W')
         self.update_bwmap(datatype='W')
@@ -39,6 +39,11 @@ class Q_Optimizer():
         # update backward Act bwmap
         self.K_bA = self.K_update(target_bit=self.target_bit_bA, datatype='bA')
         self.update_bwmap(datatype='bA')
+
+    def zero_sensitivity(self):
+        for q_params in self.q_params_list:
+            q_params.sensitivity['W'] = torch.zeros_like(q_params.sensitivity['W'])
+            q_params.sensitivity['bA'] = torch.zeros_like(q_params.sensitivity['bA'])
 
     def mean_bw(self, datatype=None, bwmaptype='temp_bwmap'):
         # return the mean of bwmap:temp_bwmap, int_bwmap or smooth bwmap

@@ -14,18 +14,16 @@ class Q_params:
         self.C_bA = 1
 
         self.block_size = {
-            'A': None,
-            'W': None,
-            'G': None,
-            'B': None,
-            'bA': None  
+            'A': [4,4,1,1],
+            'W': [4,4,1,1],
+            'G': [4,4,1,1],
+            'bA': [4,4,1,1]  
         }
 
         self.bwmap = {
             'A': None,
             'W': None,
             'G': None,
-            'B': None,
             'bA': None
         }
 
@@ -33,23 +31,20 @@ class Q_params:
             'A': None,
             'W': None,
             'G': None,
-            'B': None,
             'bA': None  
         }
 
         self.computations = {
             'A' : 1,
             'W' : 1,
-            'B' : 1,
             'G' : 1,
-            'GA': 1,
+            'bA': 1,
         }
 
         self.sensitivity = {
             'A': None,
             'W': None,
             'G': None,
-            'B': None,
             'bA': None  
         }
         
@@ -57,12 +52,13 @@ class Q_params:
             'A': None,
             'W': None,
             'G': None,
-            'B': None,
             'bA': None
         }
 
         self.sparsity_counter = {
             'A' : None,
+            'W' : None,
+            'G' : None,
             'bA': None,
         }
 
@@ -76,8 +72,11 @@ class Q_params:
         self.bwmap[datatype] = bwmap
 
     def set_int_bwmap(self, datatype, int_bwmap):
-        self.int_bwmap[datatype] = int_bwmap
-
+        if isinstance(int_bwmap, int):
+            int_bwmap = torch.ones_like(self.sensitivity[datatype]) * int_bwmap
+        else:
+            self.int_bwmap[datatype] = int_bwmap
+            
     def update_bwmap(self, datatype, bwmap_new, bwmap_smooth=0):
         self.bwmap[datatype] = self.bwmap[datatype] * bwmap_smooth + bwmap_new
     

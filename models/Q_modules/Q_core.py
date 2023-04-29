@@ -164,12 +164,9 @@ def FPQuant(data:torch.tensor, stochastic=False): ## S:1bit, E:4bit, M:3bit
 ### OBAQ-Module
 def Sensitivity_Analysis(data, grad, block_size, C):
     BFP_paddingshape = get_BFP_paddingshape(data.shape, block_size)
-
     data_padding = BFP_padding(data, BFP_paddingshape)
     grad_padding = BFP_padding(grad, BFP_paddingshape)
-
-    data_max = BFP_max(data_padding)
-    grad_norm = BFP_norm(grad_padding)
-
+    data_max = BFP_max(data_padding, block_size=block_size)
+    grad_norm = BFP_norm(grad_padding, block_size=block_size)
     sensitivity = torch.log2(data_max * grad_norm / C + 1e-12)
     return sensitivity

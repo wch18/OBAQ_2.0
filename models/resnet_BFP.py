@@ -31,7 +31,7 @@ def init_model(model):
 class BasicBlock_BFP(nn.Module):
     expansion = 1
     def __init__(self, inplanes, planes, stride=1, downsample=None):
-        super(BasicBlock_BFP, self).__init__()
+        super().__init__()
         self.conv1 = BFPconv3x3(inplanes, planes, stride)
         self.bn1 = nn.BatchNorm2d(planes)
         self.relu = nn.ReLU(inplace=True)
@@ -98,7 +98,7 @@ class Bottleneck_BFP(nn.Module):
 
 class ResNet_BFP(nn.Module):
     def __init__(self):
-        super(ResNet_BFP, self).__init__()
+        super().__init__()
     
     def _make_layer(self, block, planes, blocks, stride=1):
         downsample = None
@@ -166,13 +166,13 @@ class ResNet_BFP(nn.Module):
                 m.q_params.state = 'train'
 
     def eval(self):
-        super().eval()
+        super().train(mode=False)
         for m in self.modules():
             if isinstance(m, BFPQConv2d) or isinstance(m, BFPQLinear):
                 m.q_params.state = 'eval'
 
     def register(self):
-        super().eval()
+        super().train(mode=False)
         for m in self.modules():
             if isinstance(m, BFPQConv2d) or isinstance(m, BFPQLinear):
                 m.q_params.state = 'reg'
@@ -190,7 +190,7 @@ class ResNet_BFP(nn.Module):
 class ResNet_imagenet_BFP(ResNet_BFP):
     def __init__(self, num_classes=1000,
                  block=Bottleneck_BFP, layers=[3, 4, 23, 3]):
-        super(ResNet_imagenet_BFP, self).__init__()
+        super().__init__()
         self.inplanes = 64
         self.conv1 = BFPQConv2d(3, 64, kernel_size=7, stride=2, padding=3,bias=False)
         self.bn1 = nn.BatchNorm2d(64)
@@ -216,7 +216,7 @@ class ResNet_imagenet_BFP(ResNet_BFP):
 class ResNet_cifar100_BFP(ResNet_BFP):
     def __init__(self, num_classes=10,
                  block=BasicBlock_BFP, layers=[2, 2, 2, 2]): 
-        super(ResNet_cifar100_BFP, self).__init__()
+        super().__init__()
         self.inplanes = 64
         self.conv1 = BFPQConv2d(3, 64, kernel_size=3, stride=1, padding=1,
                              bias=False)
@@ -244,7 +244,7 @@ class ResNet_cifar100_BFP(ResNet_BFP):
 class ResNet_cifar100_BFP_simple(ResNet_BFP):
     def __init__(self, num_classes=10,
                  block=BasicBlock_BFP, depth=18): 
-        super(ResNet_cifar100_BFP_simple, self).__init__()
+        super().__init__()
         self.inplanes = 16
         n = int((depth - 2) / 6)
         self.conv1 = BFPQConv2d(3, 16, kernel_size=3, stride=1, padding=1,
