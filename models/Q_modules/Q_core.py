@@ -3,6 +3,7 @@ from torch.autograd.function import InplaceFunction, Function
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np 
+import time
 
 # from einops import rearrange, repeat, reduce
 
@@ -98,10 +99,12 @@ def decompose_tensor(x):
     return negative, exponent.float(), mantissa
 
 def BFPQuant(data:torch.tensor, block_size:tuple, block_bw:tuple, stochastic=False, sparsity_counter=None):
-
+    
     if block_size is None or block_bw is None:  # block_size或block_bw为None时，不进行量化
+        # print(block_size, type(block_bw))
         return data 
     with torch.no_grad():
+
         BFPshape = list(block_bw.shape)
         data_shape = data.shape
         data_padding_shape = list(np.array(BFPshape) * np.array(block_size)) 
@@ -125,10 +128,8 @@ def BFPQuant(data:torch.tensor, block_size:tuple, block_bw:tuple, stochastic=Fal
         data_block = round(data_block, delta_block, stochastic, -bins+1, bins-1)
 
         data_quantized = BFP_deblock(data_block, data_padding_shape)                                  # data deblock
-        # data_quantized = rearrange(data_quantized, 'd0 d1 d2 d3 bs0 bs1 bs2 bs3 -> (d0 bs0) (d1 bs1) (d2 bs2) (d3 bs3)', bs0=block_size[0], bs1=block_size[1], bs2=block_size[2], bs3=block_size[3])
         data_quantized = data_quantized[:data_shape[0], :data_shape[1], :data_shape[2], :data_shape[3]] # clip shape
-        
-        # return data
+
         return data_quantized
 
 def INTQuant(data:torch.Tensor, bw, stochastic=False, mode='absmax'):
@@ -163,6 +164,8 @@ def FPQuant(data:torch.tensor, stochastic=False): ## S:1bit, E:4bit, M:3bit
 
 ### OBAQ-Module
 def Sensitivity_Analysis(data, grad, block_size, C):
+    data = data.detach().clone()
+    grad = grad.detach().clone()
     BFP_paddingshape = get_BFP_paddingshape(data.shape, block_size)
     data_padding = BFP_padding(data, BFP_paddingshape)
     grad_padding = BFP_padding(grad, BFP_paddingshape)

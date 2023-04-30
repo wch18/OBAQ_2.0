@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
+import time
 
 from .Q_core import *
 from .Q_params import Q_params
@@ -33,9 +34,14 @@ class Q_Optimizer():
         # Top level update call
         
         # update Weight bwmap
+        gpu_mem = torch.cuda.max_memory_allocated(device='cuda:0')
+        print('更新前W:',gpu_mem/1024/1024/1024)
+        time.sleep(2)
         self.K_W = self.K_update(target_bit=self.target_bit_W, datatype='W')
         self.update_bwmap(datatype='W')
-
+        gpu_mem = torch.cuda.max_memory_allocated(device='cuda:0')
+        print('更新前bA:',gpu_mem/1024/1024/1024)
+        time.sleep(2)
         # update backward Act bwmap
         self.K_bA = self.K_update(target_bit=self.target_bit_bA, datatype='bA')
         self.update_bwmap(datatype='bA')

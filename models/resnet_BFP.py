@@ -5,6 +5,7 @@ import numpy as np
 from .Q_modules.Q_core import *
 from .Q_modules.Q_params import Q_params
 from .Q_modules.Q_layers import BFPQConv2d, BFPQLinear
+from .resnet import BasicBlock
 
 __all__ = ['resnet_BFP']
 
@@ -108,7 +109,12 @@ class ResNet_BFP(nn.Module):
                         kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(planes * block.expansion)
             )
-
+            # downsample = nn.Sequential(
+            #     nn.Conv2d(self.inplanes, planes * block.expansion,
+            #             kernel_size=1, stride=stride, bias=False),
+            #     nn.BatchNorm2d(planes * block.expansion)
+            # )
+        print(block)
         layers = []
         layers.append(block(self.inplanes, planes, stride, downsample))
         self.inplanes = planes * block.expansion
@@ -230,16 +236,9 @@ class ResNet_cifar100_BFP(ResNet_BFP):
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
         self.avgpool = nn.AdaptiveAvgPool2d((1,1))
         self.fc = BFPQLinear(512 * block.expansion, num_classes, bias=True)
+        # self.fc = nn.Linear(512 * block.expansion, num_classes, bias=True)
         self.diff = None
         init_model(self)
-
-        self.regime = [
-            {'epoch': 0, 'optimizer': 'SGD', 'lr': 1e-1,
-             'weight_decay': 5e-4, 'momentum': 0.9},
-            {'epoch': 60, 'lr': 2e-2},
-            {'epoch': 120, 'lr': 4e-3},
-            {'epoch': 160, 'lr': 8e-4}
-        ]
 
 class ResNet_cifar100_BFP_simple(ResNet_BFP):
     def __init__(self, num_classes=10,

@@ -12,6 +12,9 @@ class Q_Scheduler:
         self.q_scheme = q_scheme
         self.cur_epoch = cur_epoch
 
+    def zero_sensitivity(self):
+        self.q_optimizer.zero_sensitivity()
+        
     def step(self):
         self.cur_epoch += 1
 
@@ -29,7 +32,7 @@ class Q_Scheduler:
         for q_params in self.q_optimizer.q_params_list:
             for datatype in ['A', 'W', 'G', 'bA']:
                 q_params.set_int_bwmap(datatype=datatype, int_bwmap=self.q_scheme.init_bwmap[datatype])
-
+        
     def train(self):
         pass
 

@@ -35,7 +35,7 @@ class BFP_conv2d(InplaceFunction):
             device = output.device
             q_params.computations['W'] = np.product(weight.shape) // 32 * output.shape[-1] * output.shape[-2] # Computation_W = Cin * Cout * K * K * Hout * Wout
             q_params.computations['bA'] = np.product(input.shape) // 32 * input.shape[-1] * input.shape[-2]   # Computation_bA = Cin * Cout * K * K * Hin * Win
-            q_params.C_W = output.shape[2]  
+            q_params.C_W = output.shape[2]
             q_params.C_bA = np.sqrt(weight.shape[0]) * weight.shape[2]
 
             W_BFPshape = get_BFP_shape(weight.shape, q_params.block_size['W'])
@@ -46,10 +46,14 @@ class BFP_conv2d(InplaceFunction):
             q_params.sensitivity['A'] = torch.zeros(size=A_BFPshape, device=device)
             G_BFPshape = get_BFP_shape(output.shape, q_params.block_size['G'])
             q_params.sensitivity['G'] = torch.zeros(size=G_BFPshape, device=device)
+
+            return output
         
         A_sparsity_counter = q_params.sparsity_counter['A']
         W_sparsity_counter = q_params.sparsity_counter['W']
-
+        # gpu_mem = torch.cuda.memory_allocated(device='cuda:0')
+        # print('forward量化开始：',gpu_mem/1024/1024/1024)
+        # time.sleep(0.5)
         # forward activation quantization
         A_block_size, A_block_bw = q_params.block_size['A'], q_params.int_bwmap['A']
         forward_q_input = BFPQuant(input, A_block_size, A_block_bw, sparsity_counter=A_sparsity_counter)
@@ -71,14 +75,21 @@ class BFP_conv2d(InplaceFunction):
         q_params:Q_params = ctx.q_params
         input = ctx.input
         weight = ctx.weight
-        bias = ctx.bias
         stride, padding, dilation, groups = ctx.args
         input_size = input.shape
         weight_size = weight.shape
-
+        grad_input_tmp = torch.zeros_like(input, device=input.device)
+        grad_weight_tmp = torch.zeros_like(weight, device=weight.device)
+        grad_bias_tmp = None
+        return grad_input_tmp, grad_weight_tmp, None, None, None, None, None, None, None
+    
         G_sparsity_counter = q_params.sparsity_counter['G']
         bA_sparsity_counter = q_params.sparsity_counter['bA']
 
+        gpu_mem = torch.cuda.memory_allocated(device='cuda:0')
+        print('backward量化开始：',gpu_mem/1024/1024/1024)
+        time.sleep(0.5)
+            
         # grad activation quantization 
         if ctx.quantize_grad:
             G_block_size, G_block_bw = q_params.block_size['G'], q_params.int_bwmap['G']
@@ -113,12 +124,12 @@ class BFP_conv2d(InplaceFunction):
             grad_bias = None
         
         ### Sensitivity Analysis
-        if q_params.state == 'train':
-            W_sensitivity = Sensitivity_Analysis(data=weight, grad=grad_weight, block_size=W_block_size, C=q_params.C_W)
-            q_params.sensitivity['W'] += W_sensitivity
-            bA_sensitivity = Sensitivity_Analysis(data=input, grad=grad_input, block_size=bA_block_size, C=q_params.C_bA)
-            q_params.sensitivity['bA'] += bA_sensitivity
-            
+        # if q_params.state == 'train':
+        #     W_sensitivity = Sensitivity_Analysis(data=weight, grad=grad_weight, block_size=W_block_size, C=q_params.C_W)
+        #     q_params.sensitivity['W'] += W_sensitivity
+        #     bA_sensitivity = Sensitivity_Analysis(data=input, grad=grad_input, block_size=bA_block_size, C=q_params.C_bA)
+        #     q_params.sensitivity['bA'] += bA_sensitivity
+
         return grad_input, grad_weight, grad_bias, None, None, None, None, None, None
 
 class BFP_linear(InplaceFunction):
@@ -151,7 +162,7 @@ class BFP_linear(InplaceFunction):
             q_params.sensitivity['G'] = torch.zeros(size=G_BFPshape, device=device)
 
             return output
-
+        
         A_sparsity_counter = q_params.sparsity_counter['A']
         W_sparsity_counter = q_params.sparsity_counter['W']
 
@@ -222,11 +233,11 @@ class BFP_linear(InplaceFunction):
         else:
             grad_bias = None
         
-        if q_params.state == 'train':
-            W_sensitivity = Sensitivity_Analysis(expand_weight, grad_weight.unsqueeze(-1).unsqueeze(-1), block_size=W_block_size, C=q_params.C_W)
-            q_params.sensitivity['W'] += W_sensitivity
-            bA_sensitivity = Sensitivity_Analysis(expand_input, grad_input.unsqueeze(-1).unsqueeze(-1), block_size=bA_block_size, C=q_params.C_bA)
-            q_params.sensitivity['bA'] += bA_sensitivity
+        # if q_params.state == 'train':
+        #     W_sensitivity = Sensitivity_Analysis(expand_weight, grad_weight.unsqueeze(-1).unsqueeze(-1), block_size=W_block_size, C=q_params.C_W)
+        #     q_params.sensitivity['W'] += W_sensitivity
+        #     bA_sensitivity = Sensitivity_Analysis(expand_input, grad_input.unsqueeze(-1).unsqueeze(-1), block_size=bA_block_size, C=q_params.C_bA)
+        #     q_params.sensitivity['bA'] += bA_sensitivity
 
         return grad_input, grad_weight, grad_bias, None, None
 

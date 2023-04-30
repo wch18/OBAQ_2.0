@@ -109,6 +109,8 @@ def main(args):
                       device=args.device, log_freq=args.log_freq)
     dummy_input = torch.zeros([args.batch_size, 3, args.input_size, args.input_size], device=args.device)
     trainer.register(dummy_input=dummy_input)
+
+    return 
     print('-------- Training --------')
     best_prec = 0
     for epoch in range(args.epochs):

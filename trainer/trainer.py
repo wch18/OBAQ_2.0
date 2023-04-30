@@ -11,7 +11,7 @@ def get_optimizer(optimizer_name, params):
         return optim.SGD(params=params, lr=0.1)
     elif optimizer_name == 'Adam':
         return optim.Adam(params=params)
-    
+
 class TrainingLog:
     '''
     Training Log
@@ -38,7 +38,6 @@ class TrainingLog:
                                   self.top1.val, self.top1.avg,
                                   self.top5.val, self.top5.avg))
     
-
 class Trainer:
     '''
     Trainer:
@@ -61,7 +60,8 @@ class Trainer:
 
     def register(self, dummy_input):
         self.model.register()
-        self.model(dummy_input)
+        dummy_output = self.model(dummy_input)
+        print(dummy_output.shape)
         self.q_scheduler.register()
         print('Q_Scheduler Register Done.')
 
@@ -75,20 +75,24 @@ class Trainer:
 
         if train:
             self.model.train()
-            self.scheduler.update_epoch(epoch)
+            self.q_scheduler.zero_sensitivity()
         else:
             self.model.eval()
 
         self.training_log.reset()
+
         gpu_mem = torch.cuda.memory_allocated(device='cuda:0')
-        print(gpu_mem)
-        time.sleep(5)
+        print(gpu_mem/1024/1024/1024)
+        time.sleep(2)
         for batch, (inputs, labels) in enumerate(dataloader):
-            
+            # gpu_mem = torch.cuda.max_memory_allocated(device='cuda:0')
+            # print('最开始：',gpu_mem/1024/1024/1024)
+            # time.sleep(2)
             self.scheduler.zero_grad()
             inputs = inputs.to(self.device)
             labels = labels.to(self.device)
             outputs = self.model(inputs)
+
             loss = self.criterion(outputs, labels)
             
             if train:
@@ -103,9 +107,14 @@ class Trainer:
 
             if batch % self.log_freq == 0:
                 self.training_log.log(batch)
-        gpu_mem = torch.cuda.memory_allocated(device='cuda:0')
-        print(gpu_mem)
-        time.sleep(5)
+            gpu_mem = torch.cuda.max_memory_allocated(device='cuda:0')
+            print('batch结束:',gpu_mem/1024/1024/1024)
+            time.sleep(1)
+
+        if train:
+            self.scheduler.update_epoch(epoch)
+            self.q_scheduler.step()
+
     def save_state(self, state_dir):
         pass
 
