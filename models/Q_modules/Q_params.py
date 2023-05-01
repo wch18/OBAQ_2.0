@@ -79,7 +79,7 @@ class Q_params:
             self.int_bwmap[datatype] = int_bwmap
             
     def update_bwmap(self, datatype, bwmap_new, bwmap_smooth=0):
-        self.bwmap[datatype] = self.bwmap[datatype] * bwmap_smooth + bwmap_new
+        self.bwmap[datatype] = self.bwmap[datatype] * bwmap_smooth + bwmap_new * (1-bwmap_smooth)
     
     def update_int_bwmap(self, datatype):
         self.int_bwmap[datatype] = round(self.bwmap[datatype], scale=2, stochastic=False)

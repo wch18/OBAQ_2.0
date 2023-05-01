@@ -74,7 +74,7 @@ class Q_Optimizer():
                 bwmap = q_params.bwmap[datatype]
                 layer_mean_bw.append(np.average(bwmap.cpu().numpy()))
                 layer_computations.append(q_params.computations[datatype])
-
+                
         mean_bw = np.average(layer_mean_bw, weights=layer_computations)
         return mean_bw
 

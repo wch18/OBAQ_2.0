@@ -8,7 +8,7 @@ import time
 
 def get_optimizer(optimizer_name, params):
     if optimizer_name == 'SGD':
-        return optim.SGD(params=params, lr=0.1)
+        return optim.SGD(params=params, lr=0.1, momentum=0.9, weight_decay=5e-4)
     elif optimizer_name == 'Adam':
         return optim.Adam(params=params)
 

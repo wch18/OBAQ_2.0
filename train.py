@@ -116,8 +116,10 @@ def main(args):
     for epoch in range(args.epochs):
         print('Train Epoch\t:', epoch)
         trainer.train(epoch)
+        trainer.training_log.log('END TRAIN')
         print('Test Epoch:\t', epoch)
         trainer.test(epoch)
+        trainer.training_log.log('END TEST')
         best_prec = max(best_prec, trainer.training_log.top1.avg)
 
     print('--------- Training Done ---------')
