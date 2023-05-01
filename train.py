@@ -44,7 +44,7 @@ parser.add_argument('--workers', type=int, default=8)
 parser.add_argument('--epochs', type=int, default=90)
 parser.add_argument('--batch_size', type=int, default=128)
 parser.add_argument('--optimizer', default='SGD')
-parser.add_argument('--warm_up_epoch', type=int, default=5)
+parser.add_argument('--warm_up_epoch', type=int, default=1)
 parser.add_argument('--lr', type=float, default=0.1, help='init lr')
 
 ### BFPQ argument
@@ -80,7 +80,7 @@ def main(args):
                            datasets_path=args.datapath)
     
     train_loader = DataLoader(train_set, 
-                              batch_size=args.batch_size, shuffle=True, 
+                              batch_size=args.batch_size, shuffle=True, drop_last=True,
                               num_workers=args.workers, pin_memory=True)
     
     test_loader = DataLoader(test_set,
@@ -97,7 +97,8 @@ def main(args):
                           batches_per_epoch=len(train_loader))
     q_optimizer = Q_Optimizer(q_params_list=model.q_params_list())
     q_scheme = Q_Scheme()
-    q_scheduler = Q_Scheduler(q_optimizer=q_optimizer, q_scheme=q_scheme)
+    q_scheduler = Q_Scheduler(q_optimizer=q_optimizer, q_scheme=q_scheme,
+                              batches_per_epoch=len(train_loader))
 
 
     
@@ -110,7 +111,6 @@ def main(args):
     dummy_input = torch.zeros([args.batch_size, 3, args.input_size, args.input_size], device=args.device)
     trainer.register(dummy_input=dummy_input)
 
-    return 
     print('-------- Training --------')
     best_prec = 0
     for epoch in range(args.epochs):

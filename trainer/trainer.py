@@ -80,10 +80,7 @@ class Trainer:
             self.model.eval()
 
         self.training_log.reset()
-
-        gpu_mem = torch.cuda.memory_allocated(device='cuda:0')
-        print(gpu_mem/1024/1024/1024)
-        time.sleep(2)
+        
         for batch, (inputs, labels) in enumerate(dataloader):
             # gpu_mem = torch.cuda.max_memory_allocated(device='cuda:0')
             # print('最开始：',gpu_mem/1024/1024/1024)
@@ -92,7 +89,8 @@ class Trainer:
             inputs = inputs.to(self.device)
             labels = labels.to(self.device)
             outputs = self.model(inputs)
-
+            # print(batch, 'lr=', self.scheduler.lr)
+            # time.sleep(0.1)
             loss = self.criterion(outputs, labels)
             
             if train:
@@ -100,16 +98,13 @@ class Trainer:
                 self.scheduler.step()
 
             prec = meters.accuracy(outputs.detach(), labels, (1, 5))
-
-            self.training_log.losses.update(loss)
+            
+            self.training_log.losses.update(loss.detach().cpu())
             self.training_log.top1.update(prec[0])
             self.training_log.top5.update(prec[1])
 
             if batch % self.log_freq == 0:
                 self.training_log.log(batch)
-            gpu_mem = torch.cuda.max_memory_allocated(device='cuda:0')
-            print('batch结束:',gpu_mem/1024/1024/1024)
-            time.sleep(1)
 
         if train:
             self.scheduler.update_epoch(epoch)

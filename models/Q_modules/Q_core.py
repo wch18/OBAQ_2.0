@@ -71,6 +71,9 @@ def BFP_max(data, block_size):
     data_block_max = data_block.reshape(s[0], s[1], s[2], s[3], -1).max(axis=4).values
     return data_block_max
 
+def BFP_absmax(data, block_size):
+    return BFP_max(data=data.abs(), block_size=block_size)
+
 def BFP_norm(data, block_size):
     data_block = BFP_block(data, block_size)
     s = data_block.shape
@@ -99,12 +102,11 @@ def decompose_tensor(x):
     return negative, exponent.float(), mantissa
 
 def BFPQuant(data:torch.tensor, block_size:tuple, block_bw:tuple, stochastic=False, sparsity_counter=None):
-    
-    if block_size is None or block_bw is None:  # block_size或block_bw为None时，不进行量化
-        # print(block_size, type(block_bw))
-        return data 
-    with torch.no_grad():
 
+    if block_size is None or block_bw is None:  # block_size或block_bw为None时，不进行量化
+        return data 
+    
+    with torch.no_grad():
         BFPshape = list(block_bw.shape)
         data_shape = data.shape
         data_padding_shape = list(np.array(BFPshape) * np.array(block_size)) 
@@ -129,7 +131,6 @@ def BFPQuant(data:torch.tensor, block_size:tuple, block_bw:tuple, stochastic=Fal
 
         data_quantized = BFP_deblock(data_block, data_padding_shape)                                  # data deblock
         data_quantized = data_quantized[:data_shape[0], :data_shape[1], :data_shape[2], :data_shape[3]] # clip shape
-
         return data_quantized
 
 def INTQuant(data:torch.Tensor, bw, stochastic=False, mode='absmax'):
@@ -169,7 +170,8 @@ def Sensitivity_Analysis(data, grad, block_size, C):
     BFP_paddingshape = get_BFP_paddingshape(data.shape, block_size)
     data_padding = BFP_padding(data, BFP_paddingshape)
     grad_padding = BFP_padding(grad, BFP_paddingshape)
-    data_max = BFP_max(data_padding, block_size=block_size)
+    data_absmax = BFP_absmax(data_padding, block_size=block_size)
     grad_norm = BFP_norm(grad_padding, block_size=block_size)
-    sensitivity = torch.log2(data_max * grad_norm / C + 1e-12)
+
+    sensitivity = torch.log2(data_absmax * grad_norm / C + 1e-12)
     return sensitivity

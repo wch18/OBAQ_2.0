@@ -73,7 +73,8 @@ class Q_params:
 
     def set_int_bwmap(self, datatype, int_bwmap):
         if isinstance(int_bwmap, int):
-            int_bwmap = torch.ones_like(self.sensitivity[datatype]) * int_bwmap
+            self.bwmap[datatype] = torch.ones_like(self.sensitivity[datatype]) * int_bwmap
+            self.int_bwmap[datatype] = self.bwmap[datatype].int()
         else:
             self.int_bwmap[datatype] = int_bwmap
             

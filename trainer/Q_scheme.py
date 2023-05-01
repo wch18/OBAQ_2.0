@@ -1,13 +1,15 @@
 import json
 
 class Q_Scheme:
-    def __init__(self) -> None:
-        self.update_period = 1
-        self.target_bit_W = 4
-        self.target_bit_bA = 4
-        self.K_update_mode = 'BinarySearch'
+    def __init__(self, update_period=1,
+                 target_bit_W=2, target_bit_bA=2,
+                 K_update_mode = 'BinarySearch', bwmap_smooth=0.5) -> None:
+        self.update_period = update_period
+        self.target_bit_W = target_bit_W
+        self.target_bit_bA = target_bit_bA
+        self.K_update_mode = K_update_mode
         self.model_type = 'BFP'
-        self.bwmap_smooth = 0.5
+        self.bwmap_smooth = bwmap_smooth
 
         self.block_size = {
             'A':[4,4,1,1],

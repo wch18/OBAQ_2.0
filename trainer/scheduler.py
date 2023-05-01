@@ -15,7 +15,7 @@ class Scheduler:
         self.scheme = scheme
         self.lr = self.scheme.init_lr
         
-        self.batched_per_epoch = batches_per_epoch
+        self.batches_per_epoch = batches_per_epoch
         self.warm_up_rate = 1/(batches_per_epoch * self.scheme.warm_up_epoch)
         
         self.cur_batch = cur_batch
@@ -37,6 +37,7 @@ class Scheduler:
         # step and update lr
         self.cur_batch += 1
         self.update_lr()
+        self.optimizer.step()
 
     def update_lr(self):
         if self.cur_epoch < self.scheme.warm_up_epoch:

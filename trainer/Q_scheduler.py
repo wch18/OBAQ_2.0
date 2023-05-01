@@ -7,9 +7,11 @@ class Q_Scheduler:
     Quantization Scheduler Module:
     
     '''
-    def __init__(self, q_optimizer=None, q_scheme:Q_Scheme=None, cur_epoch=0) -> None:
+    def __init__(self, q_optimizer=None, q_scheme:Q_Scheme=None, 
+                 batches_per_epoch=1, cur_epoch=0) -> None:
         self.q_optimizer = q_optimizer
         self.q_scheme = q_scheme
+        self.batches_per_epoch = batches_per_epoch
         self.cur_epoch = cur_epoch
 
     def zero_sensitivity(self):
@@ -20,6 +22,7 @@ class Q_Scheduler:
 
         # optimizer update
         if self.cur_epoch % self.q_scheme.update_period == 0:
+            self.q_optimizer.tuning_sensitivity(self.batches_per_epoch*self.q_scheme.update_period)
             self.q_optimizer.update()
     
     def register(self):
