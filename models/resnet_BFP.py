@@ -114,7 +114,6 @@ class ResNet_BFP(nn.Module):
             #             kernel_size=1, stride=stride, bias=False),
             #     nn.BatchNorm2d(planes * block.expansion)
             # )
-        print(block)
         layers = []
         layers.append(block(self.inplanes, planes, stride, downsample))
         self.inplanes = planes * block.expansion

@@ -50,9 +50,9 @@ class Q_Optimizer():
 
     def tuning_sensitivity(self, batches):
         print('batches=', batches)
-        for q_params in self.q_params_list:
-            q_params.sensitivity['W'] /= batches
-            q_params.sensitivity['bA'] /= batches
+        # for q_params in self.q_params_list:
+        #     q_params.sensitivity['W'] /= batches
+        #     q_params.sensitivity['bA'] /= batches
 
     def mean_bw(self, datatype=None, bwmaptype='temp_bwmap'):
         # return the mean of bwmap:temp_bwmap, int_bwmap or smooth bwmap
@@ -74,7 +74,7 @@ class Q_Optimizer():
                 bwmap = q_params.bwmap[datatype]
                 layer_mean_bw.append(np.average(bwmap.cpu().numpy()))
                 layer_computations.append(q_params.computations[datatype])
-                
+
         mean_bw = np.average(layer_mean_bw, weights=layer_computations)
         return mean_bw
 

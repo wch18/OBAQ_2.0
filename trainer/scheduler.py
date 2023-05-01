@@ -49,7 +49,7 @@ class Scheduler:
             self.lr = self.scheme.lr_func(self.cur_epoch)
         elif self.scheme.lr_tuning_method == 'step':
             # Step lr tuning
-            if self.cur_epoch == self.scheme.lr_tuning_points[self.train_stage]:
+            if self.train_stage < len(self.scheme.lr_tuning_points) and self.cur_epoch == self.scheme.lr_tuning_points[self.train_stage]:
                 self.lr *= self.scheme.lr_tuning_rates[self.train_stage]
                 self.train_stage += 1
         elif self.scheme.lr_tuning_method == 'exp':

@@ -10,6 +10,7 @@ import argparse
 import os
 import wandb
 import time
+import json
 from data.dataset import get_dataset
 from data.preprocess import get_transform
 from models.resnet_BFP import resnet_BFP
@@ -23,6 +24,7 @@ parser = argparse.ArgumentParser()
 
 ### global arguments
 parser.add_argument('--seed', type=int, default=123, help='random seed')
+parser.add_argument('--trainer_config', type=str, default='./trainer_config.json')
 
 ### logging arguments
 parser.add_argument('--results_dir', default='./results', help='results dir')
@@ -34,38 +36,40 @@ parser.add_argument('--dataset', type=str, default='cifar100')
 parser.add_argument('--datapath', type=str, default='/home/wch/data/cifar100')
 
 ### model arguments
-parser.add_argument('--model', default='resnet', choices=['resnet', 'resnet_BFP'])
+parser.add_argument('--model', default='resnet_BFP', choices=['resnet', 'resnet_BFP'])
 parser.add_argument('--input_size', type=int, default=32)
 parser.add_argument('--model_config', default='')
 parser.add_argument('--device', default='cuda:0')
 parser.add_argument('--workers', type=int, default=8)
 
 ### trainer arguments
-parser.add_argument('--epochs', type=int, default=90)
+parser.add_argument('--epochs', type=int, default=200)
 parser.add_argument('--batch_size', type=int, default=128)
 parser.add_argument('--optimizer', default='SGD')
 parser.add_argument('--warm_up_epoch', type=int, default=1)
 parser.add_argument('--lr', type=float, default=0.1, help='init lr')
 
 ### BFPQ argument
-# parser.add_argument('--K_search_mode', type=)
 
 def main(args):
     print('Global Setting...')
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
     np.random.seed(args.seed)
-    time_stamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    day_stamp = datetime.now().strftime('%Y-%m-%d')
+    time_stamp = datetime.now().strftime('%H:%M:%S')
 
     if args.save == '':
-        save_folder = args.model + '_seed_' + str(args.seed)
+        save_folder = args.model + '_' + time_stamp
     else:
         save_folder = args.save
 
-    save_path = args.results_dir + '/' + args.save
+    save_path = args.results_dir + '/' + day_stamp + '/' + save_folder
+
     if not os.path.exists(save_path):
         os.makedirs(save_path, exist_ok=True)
 
+    print('Save at ', save_path)
     print('-------- Data Loading ---------')
     train_transform = get_transform(args.dataset, 
                                     input_size=args.input_size, augment=True)
@@ -103,14 +107,24 @@ def main(args):
 
     
     print('Trainer Creating...')
-    trainer = Trainer(model=model,
-                      scheduler=scheduler, q_scheduler=q_scheduler,
-                      criterion=criterion,
-                      train_loader=train_loader, test_loader=test_loader,
-                      device=args.device, log_freq=args.log_freq)
+    if args.trainer_config is not None:
+        trainer = Trainer()
+        trainer.load_config(args.trainer_config)
+    else:
+        trainer = Trainer(model=model,
+                        scheduler=scheduler, q_scheduler=q_scheduler,
+                        criterion=criterion,
+                        train_loader=train_loader, test_loader=test_loader,
+                        device=args.device, log_freq=args.log_freq)
     dummy_input = torch.zeros([args.batch_size, 3, args.input_size, args.input_size], device=args.device)
     trainer.register(dummy_input=dummy_input)
+    
 
+    trainer.save_config(save_dir=save_path)
+    with open(save_path + '/args.json', 'w') as f:
+        json.dump(args.__dict__, f, indent=4)
+
+    return 
     print('-------- Training --------')
     best_prec = 0
     for epoch in range(args.epochs):

@@ -1,0 +1,58 @@
+{
+    "common": {
+        "init_lr": 0.1,
+        "warm_up_epoch": 1,
+        "lr_tuning_method": "step",
+        "lr_tuning_points": [
+            60,
+            120,
+            160
+        ],
+        "lr_tuning_rates": [
+            0.2,
+            0.2,
+            0.2
+        ],
+        "lr_func": null
+    },
+    "quantization": {
+        "q_type": "BFP",
+        "update_period": 1,
+        "target_bit_W": 2,
+        "target_bit_bA": 2,
+        "K_update_mode": "BinarySearch",
+        "bwmap_smooth": 0.5,
+        "init_bwmap": {
+            "A": 8,
+            "W": 4,
+            "G": 8,
+            "bA": 4
+        },
+        "block_size": {
+            "A": [
+                4,
+                4,
+                1,
+                1
+            ],
+            "W": [
+                4,
+                4,
+                1,
+                1
+            ],
+            "G": [
+                4,
+                4,
+                1,
+                1
+            ],
+            "bA": [
+                4,
+                4,
+                1,
+                1
+            ]
+        }
+    }
+}
