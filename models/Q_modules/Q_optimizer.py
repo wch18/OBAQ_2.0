@@ -27,7 +27,7 @@ class Q_Optimizer():
         self.epoch = 0
         self.K_W = 0
         self.K_bA = 0
-        self.temp_bwmap = []
+        self.bwmap_new = []
         self.computations = []
 
     def update(self):
@@ -36,12 +36,12 @@ class Q_Optimizer():
         # update Weight bwmap
         self.K_W = self.K_update(target_bit=self.target_bit_W, datatype='W')
         self.update_bwmap(datatype='W')
-        print('mean_int_bw ', self.mean_bw(datatype='W', bwmaptype='int_bwmap'))
+        print('mean_int_bw ', mean_bwmap(self.q_params_list, datatype='W', bwmaptype='int_bwmap')[0])
         print('update bA')
         # update backward Act bwmap
         self.K_bA = self.K_update(target_bit=self.target_bit_bA, datatype='bA')
         self.update_bwmap(datatype='bA')
-        print('mean_int_bw ', self.mean_bw(datatype='bA', bwmaptype='int_bwmap'))
+        print('mean_int_bw ', mean_bwmap(self.q_params_list, datatype='bA', bwmaptype='int_bwmap')[0])
 
     def zero_sensitivity(self):
         for q_params in self.q_params_list:
@@ -50,52 +50,28 @@ class Q_Optimizer():
 
     def tuning_sensitivity(self, batches):
         print('batches=', batches)
-        # for q_params in self.q_params_list:
-        #     q_params.sensitivity['W'] /= batches
-        #     q_params.sensitivity['bA'] /= batches
+        for q_params in self.q_params_list:
+            q_params.sensitivity['W'] /= batches
+            q_params.sensitivity['bA'] /= batches
 
-    def mean_bw(self, datatype=None, bwmaptype='temp_bwmap'):
-        # return the mean of bwmap:temp_bwmap, int_bwmap or smooth bwmap
-
-        layer_mean_bw = []
-        layer_computations = []
-
-        if bwmaptype == 'temp_bwmap':
-            for bwmap in self.temp_bwmap:
-                layer_mean_bw.append(np.average(bwmap.cpu().numpy()))
-            layer_computations = self.computations
-        elif bwmaptype == 'int_bwmap':
-            for q_params in self.q_params_list:
-                bwmap = q_params.int_bwmap[datatype]
-                layer_mean_bw.append(np.average(bwmap.cpu().numpy()))
-                layer_computations.append(q_params.computations[datatype])
-        elif bwmaptype == 'bwmap':
-            for q_params in self.q_params_list:
-                bwmap = q_params.bwmap[datatype]
-                layer_mean_bw.append(np.average(bwmap.cpu().numpy()))
-                layer_computations.append(q_params.computations[datatype])
-
-        mean_bw = np.average(layer_mean_bw, weights=layer_computations)
-        return mean_bw
-
-    def get_temp_bwmap(self, K, datatype):
+    def reset_sparsity_counter(self):
+        print('reset')
+        for q_params in self.q_params_list:
+            for datatype in ['A', 'W','G','bA']:
+                if q_params.sparsity_counter is not None:
+                    q_params.sparsity_counter[datatype].reset()
+        
+    def get_bwmap_new(self, K, datatype):
         # get latest bwmap with K
-
-        self.temp_bwmap = []
-        self.computations = []
-
         for q_params in self.q_params_list:
             bwmap_with_K = torch.clip(q_params.sensitivity[datatype]-K, 0, 8)
-            self.temp_bwmap.append(bwmap_with_K)
-            self.computations.append(q_params.computations[datatype])
+            q_params.bwmap_new[datatype] = bwmap_with_K
 
     def update_bwmap(self, datatype):
         # update bwmap of all q_param of self.q_params_list
-        cur_bwmap = 0
         for q_params in self.q_params_list:
-            q_params.update_bwmap(datatype=datatype, bwmap_new=self.temp_bwmap[cur_bwmap], bwmap_smooth=self.bwmap_smooth)
+            q_params.update_bwmap(datatype=datatype, bwmap_smooth=self.bwmap_smooth)
             q_params.update_int_bwmap(datatype=datatype)
-            cur_bwmap += 1
 
     def K_init(self, target_bit, datatype):
         S = 0
@@ -118,8 +94,8 @@ class Q_Optimizer():
             K_lower, K_upper = K-8, K+8
             while K_lower < K_upper:
                 K = (K_lower + K_upper)/2
-                self.get_temp_bwmap(K=K, datatype=datatype)
-                mean_bw = self.mean_bw(bwmaptype='temp_bwmap')
+                self.get_bwmap_new(K=K, datatype=datatype)
+                mean_bw, _ = mean_bwmap(self.q_params_list, datatype=datatype, bwmaptype='bwmap_new')
                 print(datatype, K, mean_bw)
                 bit_dis = mean_bw - target_bit
                 if np.abs(bit_dis) < tol:

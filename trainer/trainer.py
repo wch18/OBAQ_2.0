@@ -1,43 +1,21 @@
 import torch
-import torch.nn as nn
+import numpy as np
 import torch.optim as optim
 from utils import meters
 from .scheduler import Scheduler
 from .Q_scheduler import Q_Scheduler
+from .logger import BasicLogger, WandbLogger
+import wandb
 import time
 import json
+import os
+
 
 def get_optimizer(optimizer_name, params):
     if optimizer_name == 'SGD':
         return optim.SGD(params=params, lr=0.1, momentum=0.9, weight_decay=5e-4)
     elif optimizer_name == 'Adam':
         return optim.Adam(params=params)
-
-class TrainingLog:
-    '''
-    Training Log
-    '''
-    def __init__(self) -> None:
-        self.batch_time = meters.AverageMeter()
-        self.data_time = meters.AverageMeter()
-        self.losses = meters.AverageMeter()
-        self.top1 = meters.AverageMeter()
-        self.top5 = meters.AverageMeter()
-
-    def reset(self):
-        self.batch_time.reset()
-        self.data_time.reset()
-        self.losses.reset()
-        self.top1.reset()
-        self.top5.reset()
-
-    def log(self, batch, logfile=None):
-        print("Batch:{} Time:{:.3f}({:.3f})\tDataTime:{:.3f}({:.3f})\tloss:{:.4f}({:.4f})\tprec@1:{:.4f}({:.4f})\tprec@5:{:.4f}({:.4f})".format(batch, 
-                                  self.batch_time.val, self.batch_time.avg,
-                                  self.data_time.val, self.data_time.avg,
-                                  self.losses.val, self.losses.avg, 
-                                  self.top1.val, self.top1.avg,
-                                  self.top5.val, self.top5.avg))
     
 class Trainer:
     '''
@@ -45,25 +23,29 @@ class Trainer:
     '''
     def __init__(self, model, scheduler:Scheduler, q_scheduler:Q_Scheduler, criterion, 
                  train_loader, test_loader, device='cuda:0', 
-                 training_log:TrainingLog=TrainingLog(), log_freq=10):
+                 train_logger:BasicLogger=BasicLogger(), log_freq=10,
+                 wandb_logger:WandbLogger=WandbLogger()):
         ### 
         self.model = model
-        self.scheduler = scheduler
+        self.scheduler = scheduler  
         self.q_scheduler = q_scheduler
         self.criterion = criterion
         self.train_loader = train_loader
         self.test_loader = test_loader
         self.device = device
-        self.training_log = training_log
+        self.train_logger = train_logger
         self.log_freq = log_freq
-        self.best_prec = 0
+        self.wandb_logger = wandb_logger
+
         ### 
 
     def register(self, dummy_input):
         self.model.register()
-        dummy_output = self.model(dummy_input)
+        self.model(dummy_input)
         self.q_scheduler.register()
-        print('Q_Scheduler Register Done.')
+        if self.wandb_logger is not None:
+            self.wandb_logger.train_logger = self.train_logger
+        print('Register Done.')
 
     def train(self, epoch):
         self.forward(epoch=epoch, dataloader=self.train_loader, train=True)
@@ -79,12 +61,12 @@ class Trainer:
         else:
             self.model.eval()
 
-        self.training_log.reset()
+        self.train_logger.reset()
         
         time_stamp = time.time()
         for batch, (inputs, labels) in enumerate(dataloader):
             
-            self.training_log.data_time.update(time.time()-time_stamp)
+            self.train_logger.data_time.update(time.time()-time_stamp)
             time_stamp = time.time()
 
             self.scheduler.zero_grad()
@@ -100,23 +82,30 @@ class Trainer:
 
             prec = meters.accuracy(outputs.detach(), labels, (1, 5))
             
-            self.training_log.batch_time.update(time.time()-time_stamp)
+            self.train_logger.batch_time.update(time.time()-time_stamp)
             time_stamp = time.time()
 
-            self.training_log.losses.update(loss.detach().cpu())
-            self.training_log.top1.update(prec[0])
-            self.training_log.top5.update(prec[1])
+            self.train_logger.losses.update(loss.detach().cpu())
+            self.train_logger.top1.update(prec[0])
+            self.train_logger.top5.update(prec[1])
             
             if batch % self.log_freq == 0:
-                self.training_log.log(batch)
+                self.train_logger.log(batch)
+
+        if self.wandb_logger is not None:
+            self.wandb_logger.update(epoch=epoch, q_params_list=self.q_scheduler.q_optimizer.q_params_list, train=train)
+            self.wandb_logger.log()
 
         if train:
             self.scheduler.update_epoch()
             self.q_scheduler.step()
+        else:
+            self.train_logger.update()
 
         print('Epoch: {}, lr: {}'.format(epoch, self.scheduler.lr))
 
     def save_config(self, save_dir):
+        os.makedirs(save_dir, exist_ok=True)
         trainer_config_path = save_dir + '/trainer_config.json'
         with open(trainer_config_path, 'w') as f:
             train_config = {
@@ -130,6 +119,8 @@ class Trainer:
         with open(trainer_config_path, 'r') as f:
             trainer_config = json.load(f)
             print('Successful Loading Trainer Config from ' + trainer_config_path)
+            self.scheduler.scheme.__dict__ = trainer_config['Common']
+            self.q_scheduler.q_scheme.__dict__ = trainer_config['Quantization']
 
     def save_state(self, save_dir):
         trainer_state = save_dir + '/trainer_state.npy' 
@@ -137,8 +128,16 @@ class Trainer:
     def load_state(self, trainer_state_path):
         trainer_state = trainer_state_path
 
-    def save_model(self, save_dir):
-        pass
+    def save_model(self, model_dir):
+        os.makedirs(model_dir, exist_ok=True)
+        model_dict_path = model_dir + '/model.pth'
+        torch.save(self.model.state_dict(), model_dict_path)
+        q_params_dict_path = model_dir + '/q_params.npy'
+        np.save(q_params_dict_path, self.model.q_params_dict())
+        print('Successful Saving Model to ' + model_dir + ' ...')
 
-    def load_model(self, model_path):
-        pass
+    def load_model(self, model_dir):
+        model_dict_path = model_dir + '/model.pth'
+        self.model.load_state_dict(torch.load(model_dict_path))
+        q_params_dict_path = model_dir + '/q_params.npz'
+        self.model.load_q_params_dict(np.load(q_params_dict_path))

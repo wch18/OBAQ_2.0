@@ -34,9 +34,11 @@ class BFP_conv2d(InplaceFunction):
             output = F.conv2d(input, weight, bias, stride=stride, padding=padding, dilation=dilation, groups=groups)
             device = output.device
             q_params.computations['W'] = np.product(weight.shape) // 32 * output.shape[-1] * output.shape[-2] # Computation_W = Cin * Cout * K * K * Hout * Wout
-            q_params.computations['bA'] = np.product(input.shape) // 32 * input.shape[-1] * input.shape[-2]   # Computation_bA = Cin * Cout * K * K * Hin * Win
+            q_params.computations['bA'] = np.product(weight.shape) // 32 * input.shape[-1] * input.shape[-2]   # Computation_bA = Cin * Cout * K * K * Hin * Win
             q_params.C_W = output.shape[2]
+            # print('W:', q_params.C_W, np.sqrt(q_params.computations['W']/np.product(weight.shape)*32))
             q_params.C_bA = np.sqrt(weight.shape[0]) * weight.shape[2]
+            # print('bA:', q_params.C_bA, np.sqrt(q_params.computations['bA']/np.product(input.shape))*64)
 
             W_BFPshape = get_BFP_shape(weight.shape, q_params.block_size['W'])
             q_params.sensitivity['W'] = torch.zeros(size=W_BFPshape, device=device)
@@ -115,9 +117,9 @@ class BFP_conv2d(InplaceFunction):
         ### Sensitivity Analysis
         if q_params.state == 'train':
             W_sensitivity = Sensitivity_Analysis(data=weight, grad=grad_weight, block_size=W_block_size, C=q_params.C_W)
-            q_params.sensitivity['W'] = W_sensitivity
+            q_params.sensitivity['W'] += W_sensitivity
             bA_sensitivity = Sensitivity_Analysis(data=input, grad=grad_input, block_size=bA_block_size, C=q_params.C_bA)
-            q_params.sensitivity['bA'] = bA_sensitivity
+            q_params.sensitivity['bA'] += bA_sensitivity
 
         return grad_input, grad_weight, grad_bias, None, None, None, None, None, None
 
@@ -181,6 +183,7 @@ class BFP_linear(InplaceFunction):
 
         G_sparsity_counter = q_params.sparsity_counter['G']
         bA_sparsity_counter = q_params.sparsity_counter['bA']
+        # print(bA_sparsity_counter.val)
     
         # grad activation quantization:
         if ctx.quantize_grad:
@@ -226,9 +229,9 @@ class BFP_linear(InplaceFunction):
         
         # if q_params.state == 'train':
             W_sensitivity = Sensitivity_Analysis(expand_weight, grad_weight.unsqueeze(-1).unsqueeze(-1), block_size=W_block_size, C=q_params.C_W)
-            q_params.sensitivity['W'] = W_sensitivity
+            q_params.sensitivity['W'] += W_sensitivity
             bA_sensitivity = Sensitivity_Analysis(expand_input, grad_input.unsqueeze(-1).unsqueeze(-1), block_size=bA_block_size, C=q_params.C_bA)
-            q_params.sensitivity['bA'] = bA_sensitivity
+            q_params.sensitivity['bA'] += bA_sensitivity
 
         return grad_input, grad_weight, grad_bias, None, None
 
@@ -320,27 +323,27 @@ class BFP_linear(InplaceFunction):
 #             grad_weight.div_(norm_grad_weight)
 #         return grad_input, grad_weight, grad_bias, None
 
-class INTQConv2d(nn.Conv2d):
-    def __init__(self, in_channels, out_channels, kernel_size,
-                 stride=1, padding=0, dilation=1, groups=1, bias=False, bw=[8,8,8,8]):
-        super(INTQConv2d, self).__init__(in_channels, out_channels, kernel_size,
-                                      stride, padding, dilation, groups, bias)
-        self.bw = bw
+# class INTQConv2d(nn.Conv2d):
+#     def __init__(self, in_channels, out_channels, kernel_size,
+#                  stride=1, padding=0, dilation=1, groups=1, bias=False, bw=[8,8,8,8]):
+#         super(INTQConv2d, self).__init__(in_channels, out_channels, kernel_size,
+#                                       stride, padding, dilation, groups, bias)
+#         self.bw = bw
         
-    def forward(self, input):
-        output = int_conv2d.apply(input, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups, self.bw)
-        # with torch.no_grad():
-        #     output_2 = F.conv2d(input, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
-        #     print(diff(output, output_2))
-        return output
+#     def forward(self, input):
+#         output = int_conv2d.apply(input, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups, self.bw)
+#         # with torch.no_grad():
+#         #     output_2 = F.conv2d(input, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
+#         #     print(diff(output, output_2))
+#         return output
 
-class INTQLinear(nn.Linear):
-    def __init__(self, in_features, out_features, bias=True, bw=[8,8,8,8,8]):
-        super(INTQLinear, self).__init__(in_features, out_features, bias)
-        self.bw = bw
+# class INTQLinear(nn.Linear):
+#     def __init__(self, in_features, out_features, bias=True, bw=[8,8,8,8,8]):
+#         super(INTQLinear, self).__init__(in_features, out_features, bias)
+#         self.bw = bw
 
-    def forward(self, input):
-        output = int_linear.apply(input, self.weight, self.bias, self.bw)
-        # output = F.linear(input, self.weight, self.bias)
-        return output
+#     def forward(self, input):
+#         output = int_linear.apply(input, self.weight, self.bias, self.bw)
+#         # output = F.linear(input, self.weight, self.bias)
+#         return output
 

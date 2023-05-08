@@ -3,3 +3,4 @@ from .Q_scheduler import Q_Scheduler
 from .Q_scheme import Q_Scheme
 from .scheduler import Scheduler
 from .scheme import Scheme
+from .logger import BasicLogger, WandbLogger

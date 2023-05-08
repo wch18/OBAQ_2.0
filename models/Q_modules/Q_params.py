@@ -20,6 +20,13 @@ class Q_params:
             'bA': [4,4,1,1]  
         }
 
+        self.bwmap_new = {
+            'A': None,
+            'W': None,
+            'G': None,
+            'bA': None
+        }
+
         self.bwmap = {
             'A': None,
             'W': None,
@@ -78,8 +85,8 @@ class Q_params:
         else:
             self.int_bwmap[datatype] = int_bwmap
             
-    def update_bwmap(self, datatype, bwmap_new, bwmap_smooth=0):
-        self.bwmap[datatype] = self.bwmap[datatype] * bwmap_smooth + bwmap_new * (1-bwmap_smooth)
+    def update_bwmap(self, datatype, bwmap_smooth=0):
+        self.bwmap[datatype] = self.bwmap[datatype] * bwmap_smooth + self.bwmap_new[datatype] * (1-bwmap_smooth)
     
     def update_int_bwmap(self, datatype):
         self.int_bwmap[datatype] = round(self.bwmap[datatype], scale=2, stochastic=False)
@@ -89,6 +96,9 @@ class Q_params:
 
     def acc_sensitivity(self, datatype, sensitivity):
         self.sensitivity[datatype] += sensitivity
+
+    def set_sparsity_counter(self, datatype, counter=None):
+        self.sparsity_counter[datatype] = counter
     
     # def update_sensitivity(self, datatype):
     #     if self.grad[datatype] is None:

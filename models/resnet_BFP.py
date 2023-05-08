@@ -143,7 +143,7 @@ class ResNet_BFP(nn.Module):
                 q_params_list.append(m.q_params)
         return q_params_list
     
-    def save_q_params(self, q_params_file):
+    def q_params_dict(self):
         q_params_dict = {}
         for name, layer in self.named_modules():
             if isinstance(layer, BFPQConv2d) or isinstance(layer, BFPQLinear):    
@@ -153,9 +153,9 @@ class ResNet_BFP(nn.Module):
                 q_params_dict[name + '_bA_int_bwmap'] = layer.q_params.int_bwmap['bA']
                 q_params_dict[name + '_W_sensitivity'] = layer.q_params.sensitivity['W']
                 q_params_dict[name + '_bA_sensitivity'] = layer.q_params.sensitivity['bA']
-        np.save(q_params_file, q_params_dict)
+        return q_params_dict
 
-    def load_bwmap(self, q_params_file):
+    def load_q_params_dict(self, q_params_file):
         q_params_dict = np.load(q_params_file, allow_pickle=True).item()
         for name, layer in self.named_modules():
             if isinstance(layer, BFPQConv2d) or isinstance(layer, BFPQLinear):    

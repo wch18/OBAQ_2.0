@@ -118,8 +118,11 @@ def BFPQuant(data:torch.tensor, block_size:tuple, block_bw:tuple, stochastic=Fal
         # exponent_max = BFP_max(exponent, block_size)
         if sparsity_counter is not None: 
             non_zeros = (exponent_max > -31) & (block_bw != 0)
+            # if data.shape[0] == 128:
+            #     print(torch.count_nonzero(block_bw == 0))
+            #     print(block_bw[:4, :4, 0,0].cpu().numpy())
             sparsity = 1 - torch.count_nonzero(non_zeros) / np.product(BFPshape)
-            sparsity_counter.update(sparsity)
+            sparsity_counter.update(sparsity.cpu())
 
         bins = (torch.tensor(1) << (block_bw-1))
         delta_block = (torch.tensor(1) << (exponent_max + 1)) / bins
@@ -175,3 +178,25 @@ def Sensitivity_Analysis(data, grad, block_size, C):
 
     sensitivity = torch.log2(data_absmax * grad_norm / C + 1e-12)
     return sensitivity
+
+def mean_bwmap(q_params_list, datatype, bwmaptype):
+    layer_mean_bws = []
+    layer_weights = []
+    for q_params in q_params_list:
+        bwmap = getattr(q_params, bwmaptype)
+        layer_mean_bws.append(np.average(bwmap[datatype].cpu().numpy()))
+        layer_weights.append(q_params.computations[datatype])
+    
+    # print(layer_mean_bws, layer_weights)
+    total_mean_bw = np.average(layer_mean_bws, weights=layer_weights)
+    return total_mean_bw, layer_mean_bws
+
+def mean_sparsity(q_params_list, datatype):
+    layer_mean_sparsities = []
+    layer_weights = []
+    for q_params in q_params_list:
+        layer_mean_sparsities.append(q_params.sparsity_counter[datatype].avg)
+        layer_weights.append(q_params.computations[datatype])
+    print(datatype, layer_mean_sparsities, layer_weights)
+    total_mean_sparsity = np.average(layer_mean_sparsities, weights=layer_weights)
+    return total_mean_sparsity, layer_mean_sparsities

@@ -1,5 +1,5 @@
 {
-    "common": {
+    "Common": {
         "init_lr": 0.1,
         "warm_up_epoch": 1,
         "lr_tuning_method": "step",
@@ -15,9 +15,9 @@
         ],
         "lr_func": null
     },
-    "quantization": {
+    "Quantization": {
         "q_type": "BFP",
-        "update_period": 1,
+        "update_period": 2,
         "target_bit_W": 2,
         "target_bit_bA": 2,
         "K_update_mode": "BinarySearch",

@@ -18,13 +18,14 @@ from models.resnet_BFP import resnet_BFP
 # from .trainer.trainer import Trainer, get_optimizer
 # from .trainer.scheme import Scheme
 from models.Q_modules import Q_Optimizer
-from trainer import Trainer, get_optimizer, Scheduler, Q_Scheduler, Scheme, Q_Scheme
+from trainer import Trainer, get_optimizer, Scheduler, Q_Scheduler, Scheme, Q_Scheme, WandbLogger
 
 parser = argparse.ArgumentParser()
 
 ### global arguments
 parser.add_argument('--seed', type=int, default=123, help='random seed')
-parser.add_argument('--trainer_config', type=str, default='./trainer_config.json')
+parser.add_argument('--trainer_config', type=str, default=None)
+parser.add_argument('--wandb_project', type=str, default=None)
 
 ### logging arguments
 parser.add_argument('--results_dir', default='./results', help='results dir')
@@ -50,6 +51,9 @@ parser.add_argument('--warm_up_epoch', type=int, default=1)
 parser.add_argument('--lr', type=float, default=0.1, help='init lr')
 
 ### BFPQ argument
+parser.add_argument('--target_bit_W', type=int, default=2)
+parser.add_argument('--target_bit_bA', type=int, default=2)
+parser.add_argument('--K_update_mode', type=str, default='BinarySearch')
 
 def main(args):
     print('Global Setting...')
@@ -70,6 +74,19 @@ def main(args):
         os.makedirs(save_path, exist_ok=True)
 
     print('Save at ', save_path)
+    with open(save_path + '/args.json', 'w') as f:
+        json.dump(args.__dict__, f, indent=4)
+
+    wandb_log = args.wandb_project is not None
+    if wandb_log:
+        if args.trainer_config is not None:
+            wandb_config = {'config_save':save_path}
+        else:
+            wandb_config = args.__dict__
+
+        print('Wandb Setting (Optional) ...')
+        wandb.init(project=args.wandb_project, name=save_folder, config=wandb_config)
+
     print('-------- Data Loading ---------')
     train_transform = get_transform(args.dataset, 
                                     input_size=args.input_size, augment=True)
@@ -100,41 +117,46 @@ def main(args):
     scheduler = Scheduler(optimizer=optimizer, scheme=scheme,
                           batches_per_epoch=len(train_loader))
     q_optimizer = Q_Optimizer(q_params_list=model.q_params_list())
-    q_scheme = Q_Scheme()
+    q_scheme = Q_Scheme(target_bit_bA=args.target_bit_bA, target_bit_W=args.target_bit_W,
+                        K_update_mode=args.K_update_mode)
     q_scheduler = Q_Scheduler(q_optimizer=q_optimizer, q_scheme=q_scheme,
                               batches_per_epoch=len(train_loader))
 
 
     
     print('Trainer Creating...')
-    if args.trainer_config is not None:
-        trainer = Trainer()
-        trainer.load_config(args.trainer_config)
+    if wandb_log:
+        wandb_logger = WandbLogger()
     else:
-        trainer = Trainer(model=model,
-                        scheduler=scheduler, q_scheduler=q_scheduler,
-                        criterion=criterion,
-                        train_loader=train_loader, test_loader=test_loader,
-                        device=args.device, log_freq=args.log_freq)
+        wandb_logger = None
+    trainer = Trainer(model=model,
+                    scheduler=scheduler, q_scheduler=q_scheduler,
+                    criterion=criterion,
+                    train_loader=train_loader, test_loader=test_loader,
+                    device=args.device, log_freq=args.log_freq,
+                    wandb_logger=wandb_logger)
+
+    if args.trainer_config is not None:
+        trainer.load_config(args.trainer_config)
+
     dummy_input = torch.zeros([args.batch_size, 3, args.input_size, args.input_size], device=args.device)
     trainer.register(dummy_input=dummy_input)
-    
 
     trainer.save_config(save_dir=save_path)
-    with open(save_path + '/args.json', 'w') as f:
-        json.dump(args.__dict__, f, indent=4)
 
-    return 
     print('-------- Training --------')
     best_prec = 0
     for epoch in range(args.epochs):
         print('Train Epoch\t:', epoch)
         trainer.train(epoch)
-        trainer.training_log.log('END TRAIN')
+        trainer.train_logger.log('END TRAIN')
         print('Test Epoch:\t', epoch)
         trainer.test(epoch)
-        trainer.training_log.log('END TEST')
-        best_prec = max(best_prec, trainer.training_log.top1.avg)
+        trainer.train_logger.log('END TEST')
+        best_prec = max(best_prec, trainer.train_logger.top1.avg)
+        if epoch % 5 == 0:
+            model_dir = save_path + '/epoch_' + str(epoch)
+            trainer.save_model(model_dir)
 
     print('--------- Training Done ---------')
     print(best_prec)
