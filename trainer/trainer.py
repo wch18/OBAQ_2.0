@@ -9,7 +9,7 @@ import wandb
 import time
 import json
 import os
-
+import sys
 
 def get_optimizer(optimizer_name, params):
     if optimizer_name == 'SGD':
@@ -24,7 +24,7 @@ class Trainer:
     def __init__(self, model, scheduler:Scheduler, q_scheduler:Q_Scheduler, criterion, 
                  train_loader, test_loader, device='cuda:0', 
                  train_logger:BasicLogger=BasicLogger(), log_freq=10,
-                 wandb_logger:WandbLogger=WandbLogger()):
+                 wandb_logger:WandbLogger=WandbLogger(), output_target=sys.stdout):
         ### 
         self.model = model
         self.scheduler = scheduler  
@@ -36,16 +36,25 @@ class Trainer:
         self.train_logger = train_logger
         self.log_freq = log_freq
         self.wandb_logger = wandb_logger
+        self.output_target = output_target
 
         ### 
 
     def register(self, dummy_input):
+        self.train_logger.output_target = self.output_target
+        if self.wandb_logger is not None:
+            self.wandb_logger.train_logger = self.train_logger
+            self.wandb_logger.q_optimizer = self.q_scheduler.q_optimizer
+
+        if self.q_scheduler.q_scheme.q_type != 'BFP':
+            self.q_scheduler.q_optimizer = None
+            return
+        
         self.model.register()
         self.model(dummy_input)
         self.q_scheduler.register()
-        if self.wandb_logger is not None:
-            self.wandb_logger.train_logger = self.train_logger
-        print('Register Done.')
+
+        print('Register Done.', file=self.output_target)
 
     def train(self, epoch):
         self.forward(epoch=epoch, dataloader=self.train_loader, train=True)
@@ -93,7 +102,7 @@ class Trainer:
                 self.train_logger.log(batch)
 
         if self.wandb_logger is not None:
-            self.wandb_logger.update(epoch=epoch, q_params_list=self.q_scheduler.q_optimizer.q_params_list, train=train)
+            self.wandb_logger.update(epoch=epoch, train=train)
             self.wandb_logger.log()
 
         if train:
@@ -102,25 +111,25 @@ class Trainer:
         else:
             self.train_logger.update()
 
-        print('Epoch: {}, lr: {}'.format(epoch, self.scheduler.lr))
+        print('Epoch: {}, lr: {}'.format(epoch, self.scheduler.lr), file=self.output_target)
 
     def save_config(self, save_dir):
         os.makedirs(save_dir, exist_ok=True)
         trainer_config_path = save_dir + '/trainer_config.json'
         with open(trainer_config_path, 'w') as f:
             train_config = {
-                'Common':self.scheduler.scheme.__dict__,
-                'Quantization':self.q_scheduler.q_scheme.__dict__,
+                'Common': getattr(self.scheduler.scheme, '__dict__', None),
+                'Quantization':getattr(self.q_scheduler.q_scheme, '__dict__', None)
             }
             json.dump(train_config, f, indent=4)
-            print('Successful Dumping Trainer Config to '+ trainer_config_path)
+            print('Successful Dumping Trainer Config to '+ trainer_config_path, file=self.output_target)
 
     def load_config(self, trainer_config_path):
         with open(trainer_config_path, 'r') as f:
             trainer_config = json.load(f)
-            print('Successful Loading Trainer Config from ' + trainer_config_path)
-            self.scheduler.scheme.__dict__ = trainer_config['Common']
-            self.q_scheduler.q_scheme.__dict__ = trainer_config['Quantization']
+            print('Successful Loading Trainer Config from ' + trainer_config_path, file=self.output_target)
+            setattr(self.scheduler.scheme, '__dict__', trainer_config['Common'])
+            setattr(self.q_scheduler.q_scheme, '__dict__', trainer_config['Quantization'])
 
     def save_state(self, save_dir):
         trainer_state = save_dir + '/trainer_state.npy' 
@@ -132,12 +141,14 @@ class Trainer:
         os.makedirs(model_dir, exist_ok=True)
         model_dict_path = model_dir + '/model.pth'
         torch.save(self.model.state_dict(), model_dict_path)
-        q_params_dict_path = model_dir + '/q_params.npy'
-        np.save(q_params_dict_path, self.model.q_params_dict())
-        print('Successful Saving Model to ' + model_dir + ' ...')
+        if self.q_scheduler.q_scheme.q_type == 'BFP':
+            q_params_dict_path = model_dir + '/q_params.npy'
+            np.save(q_params_dict_path, self.model.q_params_dict())
+        print('Successful Saving Model to ' + model_dir + ' ...', file=self.output_target)
 
     def load_model(self, model_dir):
         model_dict_path = model_dir + '/model.pth'
         self.model.load_state_dict(torch.load(model_dict_path))
-        q_params_dict_path = model_dir + '/q_params.npz'
-        self.model.load_q_params_dict(np.load(q_params_dict_path))
+        if self.q_scheduler.q_scheme.q_type == 'BFP':
+            q_params_dict_path = model_dir + '/q_params.npz'
+            self.model.load_q_params_dict(np.load(q_params_dict_path))

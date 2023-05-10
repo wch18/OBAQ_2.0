@@ -11,8 +11,7 @@ import time
 import os
 import sys
 
-sys.path.append("./utils")
-from meters import AverageMeter
+from utils.meters import AverageMeter
 
 idx = 0
 
@@ -36,10 +35,8 @@ class BFP_conv2d(InplaceFunction):
             q_params.computations['W'] = np.product(weight.shape) // 32 * output.shape[-1] * output.shape[-2] # Computation_W = Cin * Cout * K * K * Hout * Wout
             q_params.computations['bA'] = np.product(weight.shape) // 32 * input.shape[-1] * input.shape[-2]   # Computation_bA = Cin * Cout * K * K * Hin * Win
             q_params.C_W = output.shape[2]
-            # print('W:', q_params.C_W, np.sqrt(q_params.computations['W']/np.product(weight.shape)*32))
             q_params.C_bA = np.sqrt(weight.shape[0]) * weight.shape[2]
-            # print('bA:', q_params.C_bA, np.sqrt(q_params.computations['bA']/np.product(input.shape))*64)
-
+            
             W_BFPshape = get_BFP_shape(weight.shape, q_params.block_size['W'])
             q_params.sensitivity['W'] = torch.zeros(size=W_BFPshape, device=device)
             bA_BFPshape = get_BFP_shape(input.shape, q_params.block_size['bA'])
@@ -155,7 +152,6 @@ class BFP_linear(InplaceFunction):
             return output
         
         # return F.linear(input, weight, bias) 
-        
         A_sparsity_counter = q_params.sparsity_counter['A']
         W_sparsity_counter = q_params.sparsity_counter['W']
 
@@ -235,115 +231,165 @@ class BFP_linear(InplaceFunction):
 
         return grad_input, grad_weight, grad_bias, None, None
 
+class INT_conv2d(InplaceFunction):
+    @staticmethod   
+    def forward(ctx, input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1, bw=[8, 8, 8, 8]): # A,W,G,GA
+        ctx.input = input
+        ctx.weight = weight
+        ctx.bias = bias
+        ctx.args = stride, padding, dilation, groups
+        ctx.bw = bw 
+        q_input= INTQuant(input, bw[0])
+        q_weight= INTQuant(weight, bw[1])
+        # q_input= FPQuant(input)
+        # q_weight= FPQuant(weight)
+        # print(weight[:4,:4,0,0], q_weight[:4,:4,0,0])
+        output = F.conv2d(q_input, q_weight, bias, stride, padding, dilation, groups)
+        return output
 
+    @staticmethod
+    def backward(ctx, grad_output):
+        stride, padding, dilation, groups = ctx.args
+        bw = ctx.bw
+        raw_input = ctx.input
+        raw_weight = ctx.weight
+        input_size = raw_input.shape
+        weight_size = raw_weight.shape
+        # grad_output.clamp_(-0.5, 0.5)
+        q_grad_output= INTQuant(grad_output, bw[2], True)
+        q_input= INTQuant(raw_input, bw[3])
+        q_weight = INTQuant(raw_weight, bw[1])
+        # q_grad_output= FPQuant(grad_output)
+        # q_input= FPQuant(raw_input)
+        # q_weight = FPQuant(raw_weight)
 
-# class int_conv2d(InplaceFunction):
-#     @staticmethod   
-#     def forward(ctx, input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1, bw=[8, 8, 8, 8]): # A,W,G,GA
-#         ctx.input = input
-#         ctx.weight = weight
-#         ctx.bias = bias
-#         ctx.args = stride, padding, dilation, groups
-#         ctx.bw = bw 
-#         q_input= INTQuant(input, bw[0])
-#         q_weight= INTQuant(weight, bw[1])
-#         # q_input= FPQuant(input)
-#         # q_weight= FPQuant(weight)
-#         # print(weight[:4,:4,0,0], q_weight[:4,:4,0,0])
-#         output = F.conv2d(q_input, q_weight, bias, stride, padding, dilation, groups)
-#         return output
+        grad_input = cudnn_convolution.convolution_backward_input(input_size, q_weight, q_grad_output, 
+                                                                stride, padding, dilation, groups,
+                                                                True, False, False)
+        grad_weight = cudnn_convolution.convolution_backward_weight(q_input, weight_size, q_grad_output,
+                                                                stride, padding, dilation, groups,
+                                                                True, False, False)
+        norm_grad_weight = grad_weight.norm()
+        if norm_grad_weight >= 1:
+            grad_weight.div_(norm_grad_weight)
+        if ctx.bias is not None:
+            grad_bias = q_grad_output.sum([0, 2, 3])
+        else:
+            grad_bias = None
+        return grad_input, grad_weight, grad_bias, None, None, None, None, None
 
-#     @staticmethod
-#     def backward(ctx, grad_output):
-#         stride, padding, dilation, groups = ctx.args
-#         bw = ctx.bw
-#         raw_input = ctx.input
-#         raw_weight = ctx.weight
-#         input_size = raw_input.shape
-#         weight_size = raw_weight.shape
-#         # grad_output.clamp_(-0.5, 0.5)
-#         q_grad_output= INTQuant(grad_output, bw[2], True)
-#         q_input= INTQuant(raw_input, bw[3])
-#         q_weight = INTQuant(raw_weight, bw[1])
-#         # q_grad_output= FPQuant(grad_output)
-#         # q_input= FPQuant(raw_input)
-#         # q_weight = FPQuant(raw_weight)
+class INT_linear(InplaceFunction):
+    @staticmethod
+    def forward(ctx, input, weight, bias=None, bw=[8,8,8,8,8]):
+        ctx.input = input
+        ctx.weight = weight
+        ctx.bias = bias
+        ctx.bw = bw
+        q_input= INTQuant(input, bw[0])
+        q_weight= INTQuant(weight, bw[1])
+        q_bias= INTQuant(bias, bw[2])
+        # q_input= FPQuant(input)
+        # q_weight= FPQuant(weight)
+        # q_bias= FPQuant(bias)
+        output = F.linear(q_input, q_weight, q_bias)
+        return output
 
-#         grad_input = cudnn_convolution.convolution_backward_input(input_size, q_weight, q_grad_output, 
-#                                                                 stride, padding, dilation, groups,
-#                                                                 True, False, False)
-#         grad_weight = cudnn_convolution.convolution_backward_weight(q_input, weight_size, q_grad_output,
-#                                                                 stride, padding, dilation, groups,
-#                                                                 True, False, False)
-#         norm_grad_weight = grad_weight.norm()
-#         if norm_grad_weight >= 1:
-#             grad_weight.div_(norm_grad_weight)
-#         if ctx.bias is not None:
-#             grad_bias = q_grad_output.sum([0, 2, 3])
-#         else:
-#             grad_bias = None
-#         return grad_input, grad_weight, grad_bias, None, None, None, None, None
+    @staticmethod
+    def backward(ctx, grad_output):
+        bw = ctx.bw
+        raw_input = ctx.input
+        raw_weight = ctx.weight
+        # grad_output.clamp_(-0.5, 0.5)
+        q_grad_output = INTQuant(grad_output, bw[3], True)
+        q_input= INTQuant(raw_input, bw[4])
+        q_weight = INTQuant(raw_weight, bw[1])
 
-# class int_linear(InplaceFunction):
-#     @staticmethod
-#     def forward(ctx, input, weight, bias=None, bw=[8,8,8,8,8]):
-#         ctx.input = input
-#         ctx.weight = weight
-#         ctx.bias = bias
-#         ctx.bw = bw
-#         q_input= INTQuant(input, bw[0])
-#         q_weight= INTQuant(weight, bw[1])
-#         q_bias= INTQuant(bias, bw[2])
-#         # q_input= FPQuant(input)
-#         # q_weight= FPQuant(weight)
-#         # q_bias= FPQuant(bias)
-#         output = F.linear(q_input, q_weight, q_bias)
-#         return output
+        C_in = q_input.shape[-1]
+        C_out = grad_output.shape[-1]
+        q_grad_output_flatten = q_grad_output.view(-1, C_out)
+        # q_grad_output_16bit_flatten = q_grad_output_16bit.view(-1, C_out)
+        q_input_flatten = q_input.view(-1, C_in)
+        grad_input = q_grad_output_flatten.mm(q_weight)
+        grad_weight = q_grad_output_flatten.t().mm(q_input_flatten)
+        grad_bias = q_grad_output_flatten.sum(0)
+        norm_grad_weight = grad_weight.norm()
+        if norm_grad_weight >= 1:
+            grad_weight.div_(norm_grad_weight)
+        return grad_input, grad_weight, grad_bias, None
 
-#     @staticmethod
-#     def backward(ctx, grad_output):
-#         bw = ctx.bw
-#         raw_input = ctx.input
-#         raw_weight = ctx.weight
-#         # grad_output.clamp_(-0.5, 0.5)
-#         q_grad_output = INTQuant(grad_output, bw[3], True)
-#         q_input= INTQuant(raw_input, bw[4])
-#         q_weight = INTQuant(raw_weight, bw[1])
+class FP_conv2d(InplaceFunction):
+    @staticmethod   
+    def forward(ctx, input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1): # A,W,G,GA
+        ctx.input = input
+        ctx.weight = weight
+        ctx.bias = bias
+        ctx.args = stride, padding, dilation, groups
 
-#         C_in = q_input.shape[-1]
-#         C_out = grad_output.shape[-1]
-#         q_grad_output_flatten = q_grad_output.view(-1, C_out)
-#         # q_grad_output_16bit_flatten = q_grad_output_16bit.view(-1, C_out)
-#         q_input_flatten = q_input.view(-1, C_in)
-#         grad_input = q_grad_output_flatten.mm(q_weight)
-#         grad_weight = q_grad_output_flatten.t().mm(q_input_flatten)
-#         grad_bias = q_grad_output_flatten.sum(0)
-#         norm_grad_weight = grad_weight.norm()
-#         if norm_grad_weight >= 1:
-#             grad_weight.div_(norm_grad_weight)
-#         return grad_input, grad_weight, grad_bias, None
+        q_input= FPQuant(input)
+        q_weight= FPQuant(weight)
 
-# class INTQConv2d(nn.Conv2d):
-#     def __init__(self, in_channels, out_channels, kernel_size,
-#                  stride=1, padding=0, dilation=1, groups=1, bias=False, bw=[8,8,8,8]):
-#         super(INTQConv2d, self).__init__(in_channels, out_channels, kernel_size,
-#                                       stride, padding, dilation, groups, bias)
-#         self.bw = bw
-        
-#     def forward(self, input):
-#         output = int_conv2d.apply(input, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups, self.bw)
-#         # with torch.no_grad():
-#         #     output_2 = F.conv2d(input, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
-#         #     print(diff(output, output_2))
-#         return output
+        output = F.conv2d(q_input, q_weight, bias, stride, padding, dilation, groups)
+        return output
 
-# class INTQLinear(nn.Linear):
-#     def __init__(self, in_features, out_features, bias=True, bw=[8,8,8,8,8]):
-#         super(INTQLinear, self).__init__(in_features, out_features, bias)
-#         self.bw = bw
+    @staticmethod
+    def backward(ctx, grad_output):
+        stride, padding, dilation, groups = ctx.args
+        raw_input = ctx.input
+        raw_weight = ctx.weight
+        input_size = raw_input.shape
+        weight_size = raw_weight.shape
 
-#     def forward(self, input):
-#         output = int_linear.apply(input, self.weight, self.bias, self.bw)
-#         # output = F.linear(input, self.weight, self.bias)
-#         return output
+        q_grad_output= FPQuant(grad_output, True)
+        q_input= FPQuant(raw_input)
+        q_weight = FPQuant(raw_weight)
 
+        grad_input = cudnn_convolution.convolution_backward_input(input_size, q_weight, q_grad_output, 
+                                                                stride, padding, dilation, groups,
+                                                                True, False, False)
+        grad_weight = cudnn_convolution.convolution_backward_weight(q_input, weight_size, q_grad_output,
+                                                                stride, padding, dilation, groups,
+                                                                True, False, False)
+        norm_grad_weight = grad_weight.norm()
+        if norm_grad_weight >= 1:
+            grad_weight.div_(norm_grad_weight)
+        if ctx.bias is not None:
+            grad_bias = q_grad_output.sum([0, 2, 3])
+        else:
+            grad_bias = None
+        return grad_input, grad_weight, grad_bias, None, None, None, None, None
+
+class FP_linear(InplaceFunction):
+    @staticmethod
+    def forward(ctx, input, weight, bias=None):
+        ctx.input = input
+        ctx.weight = weight
+        ctx.bias = bias
+
+        q_input= FPQuant(input)
+        q_weight= FPQuant(weight)
+        q_bias= FPQuant(bias)
+        output = F.linear(q_input, q_weight, q_bias)
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+
+        raw_input = ctx.input
+        raw_weight = ctx.weight
+
+        q_grad_output = FPQuant(grad_output, True)
+        q_input= FPQuant(raw_input)
+        q_weight = FPQuant(raw_weight)
+
+        C_in = q_input.shape[-1]
+        C_out = grad_output.shape[-1]
+        q_grad_output_flatten = q_grad_output.view(-1, C_out)
+
+        q_input_flatten = q_input.view(-1, C_in)
+        grad_input = q_grad_output_flatten.mm(q_weight)
+        grad_weight = q_grad_output_flatten.t().mm(q_input_flatten)
+        grad_bias = q_grad_output_flatten.sum(0)
+        norm_grad_weight = grad_weight.norm()
+        if norm_grad_weight >= 1:
+            grad_weight.div_(norm_grad_weight)
+        return grad_input, grad_weight, grad_bias, None

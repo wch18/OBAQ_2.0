@@ -1,10 +1,10 @@
 import json
 
 class Q_Scheme:
-    def __init__(self, update_period=1,
+    def __init__(self, q_type, update_period=1,
                  target_bit_W=2, target_bit_bA=2,
                  K_update_mode = 'BinarySearch', bwmap_smooth=0.5) -> None:
-        self.q_type = 'BFP'
+        self.q_type = None
         self.update_period = update_period
         self.target_bit_W = target_bit_W
         self.target_bit_bA = target_bit_bA

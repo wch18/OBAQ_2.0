@@ -1,6 +1,7 @@
 from utils import meters
 from models.Q_modules.Q_core import *
 import wandb
+import sys
 
 class BasicLogger:
     '''
@@ -13,6 +14,7 @@ class BasicLogger:
         self.top1 = meters.AverageMeter()
         self.top5 = meters.AverageMeter()
         self.best_prec = 0
+        self.output_target = sys.stdout
 
     def reset(self):
         self.batch_time.reset()
@@ -30,7 +32,8 @@ class BasicLogger:
                                   self.data_time.val, self.data_time.avg,
                                   self.losses.val, self.losses.avg, 
                                   self.top1.val, self.top1.avg,
-                                  self.top5.val, self.top5.avg))
+                                  self.top5.val, self.top5.avg,
+                                  file=self.output_target))
 
 class WandbLogger:
     '''
@@ -39,6 +42,7 @@ class WandbLogger:
     def __init__(self):
         self.cur_epoch = 0
         self.train_logger = None
+        self.q_optimizer = None
         self.basic = {}
         self.bw = {
             'A':None,
@@ -53,27 +57,8 @@ class WandbLogger:
             'bA':None,
         }
 
-    def update(self, epoch, q_params_list, train=True):
+    def update(self, epoch, train=True):
         self.cur_epoch = epoch
-        # update mean bw
-        if train:
-            for datatype in ['A', 'W', 'G', 'bA']:
-                total_mean_bw, layer_mean_bws = mean_bwmap(q_params_list, datatype=datatype, bwmaptype='int_bwmap')
-                section = datatype + '_bw/'
-                self.bw[datatype] = {section + 'mean_bw':total_mean_bw}
-                cur_layer = 0
-                for layer_mean_bw in layer_mean_bws:
-                    self.bw[datatype].update({section+'layer'+str(cur_layer).zfill(2)+'_bw':layer_mean_bw})
-                    cur_layer += 1
-            # update mean sparsity
-            for datatype in ['A', 'W', 'G', 'bA']:
-                total_mean_sparsity, layer_mean_sparsities = mean_sparsity(q_params_list, datatype=datatype)
-                section = datatype + '_sparsity/'
-                self.sparsity[datatype] = {section + 'mean_sparsity':total_mean_sparsity}
-                cur_layer = 0
-                for layer_mean_sparsity in layer_mean_sparsities:
-                    self.sparsity[datatype].update({section+'layer'+str(cur_layer).zfill(2)+'_sparsity':layer_mean_sparsity})
-                    cur_layer += 1
 
         prefix = train and 'train_' or 'val_'
 
@@ -82,10 +67,34 @@ class WandbLogger:
         self.basic.update({prefix+'prec5':self.train_logger.top5.avg})
         self.basic.update({'best_prec':self.train_logger.best_prec})
 
+        if self.q_optimizer is not None:
+            q_params_list = self.q_optimizer.q_params_list
+            # update mean bw
+            if train:
+                for datatype in ['A', 'W', 'G', 'bA']:
+                    total_mean_bw, layer_mean_bws = mean_bwmap(q_params_list, datatype=datatype, bwmaptype='int_bwmap')
+                    section = datatype + '_bw/'
+                    self.bw[datatype] = {section + 'mean_bw':total_mean_bw}
+                    cur_layer = 0
+                    for layer_mean_bw in layer_mean_bws:
+                        self.bw[datatype].update({section+'layer'+str(cur_layer).zfill(2)+'_bw':layer_mean_bw})
+                        cur_layer += 1
+                # update mean sparsity
+                for datatype in ['A', 'W', 'G', 'bA']:
+                    total_mean_sparsity, layer_mean_sparsities = mean_sparsity(q_params_list, datatype=datatype)
+                    section = datatype + '_sparsity/'
+                    self.sparsity[datatype] = {section + 'mean_sparsity':total_mean_sparsity}
+                    cur_layer = 0
+                    for layer_mean_sparsity in layer_mean_sparsities:
+                        self.sparsity[datatype].update({section+'layer'+str(cur_layer).zfill(2)+'_sparsity':layer_mean_sparsity})
+                        cur_layer += 1
+
     def log(self):
-        for datatype in ['W', 'bA']:
-            print(self.bw[datatype])
-            print(self.sparsity[datatype])
-            wandb.log(self.bw[datatype], step=self.cur_epoch)
-            wandb.log(self.sparsity[datatype], step=self.cur_epoch)
-            wandb.log(self.basic, step=self.cur_epoch)
+        wandb.log(self.basic, step=self.cur_epoch)
+        if self.q_optimizer is not None:
+            for datatype in ['W', 'bA']:
+                print(self.bw[datatype], file=self.train_logger.output_target)
+                print(self.sparsity[datatype], file=self.train_logger.output_target)
+                wandb.log(self.bw[datatype], step=self.cur_epoch)
+                wandb.log(self.sparsity[datatype], step=self.cur_epoch)
+
