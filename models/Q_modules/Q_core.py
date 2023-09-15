@@ -9,7 +9,7 @@ import time
 
 ''' Q_core.py
     Implemented some core modules & methods which are required for quantization, including:
-
+    
     1. Block Floating Point (BFP) Basis
         -   BFP2FP & FP2BFP
             -   FP Decomposer

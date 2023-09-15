@@ -65,7 +65,7 @@ def main(args):
     is_main_process = args.local_rank == 0
     output_target = sys.stdout if is_main_process else open(os.devnull, 'w')
     print('Global Setting...', file=output_target)
-    args.ddp = int(os.getenv('WORLD_SIZE'), 0)>1
+    args.ddp = int(os.getenv('WORLD_SIZE', 0))>1
 
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
@@ -132,7 +132,7 @@ def main(args):
     print('--------- Model Creating ---------',file=output_target)
 
     # model = resnet_BFP(depth=18, dataset='cifar100').to(args.device)
-    model = resnet(depth=18, dataset='cifar100').to(args.device)
+    model = resnet_BFP(depth=18, dataset='cifar100').to(args.device)
     criterion = nn.CrossEntropyLoss().to(args.device)
     optimizer = get_optimizer(args.optimizer, model.parameters())
     scheme = Scheme(init_lr=args.lr, warm_up_epoch=args.warm_up_epoch)

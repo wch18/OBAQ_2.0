@@ -28,8 +28,7 @@ class Q_Scheduler:
             if self.cur_epoch % self.q_scheme.update_period == 0:
                 self.q_optimizer.tuning_sensitivity(self.batches_per_epoch*self.q_scheme.update_period)
                 self.q_optimizer.update()
-        
-            self.q_optimizer.reset_sparsity_counter()
+                self.q_optimizer.reset_sparsity_counter()
         else:
             pass
     

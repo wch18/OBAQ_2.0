@@ -3,13 +3,11 @@ import torch.nn as nn
 from torch.autograd.function import InplaceFunction
 import torch.nn.functional as F
 import numpy as np 
+import os
 
 from .Q_core import *
 from .Q_params import Q_params
 from torch.utils.cpp_extension import load
-import time
-import os
-import sys
 
 from utils.meters import AverageMeter
 
@@ -48,8 +46,6 @@ class BFP_conv2d(InplaceFunction):
 
             return output
         
-        # return F.conv2d(input, weight, bias,
-        #                 stride=stride, padding=padding, dilation=dilation, groups=groups)
         A_sparsity_counter = q_params.sparsity_counter['A']
         W_sparsity_counter = q_params.sparsity_counter['W']
 
@@ -137,9 +133,10 @@ class BFP_linear(InplaceFunction):
             device = output.device
             expand_output = output.unsqueeze(-1).unsqueeze(-1)
 
-            q_params.computations['W'] = np.product(expand_weight.shape) // 32 * output.shape[-1] # C_W = Cin * Cout * K * K * Hout * Wout
-            q_params.computations['bA'] = np.product(expand_input.shape) // 32 * input.shape[-1]   # C_A = Cin * Cout * K * K *Hin * Win
-
+            q_params.computations['W'] = np.product(weight.shape) // 32 # C_W = Cin * Cout * K * K * Hout * Wout
+            q_params.computations['bA'] = np.product(weight.shape) // 32 
+            q_params.C_W = 1
+            q_params.C_bA = np.sqrt(weight.shape[0])
             W_BFPshape = get_BFP_shape(expand_weight.shape, q_params.block_size['W'])
             q_params.sensitivity['W'] = torch.zeros(size=W_BFPshape, device=device)
             bA_BFPshape = get_BFP_shape(expand_input.shape, q_params.block_size['bA'])
@@ -223,7 +220,7 @@ class BFP_linear(InplaceFunction):
         else:
             grad_bias = None
         
-        # if q_params.state == 'train':
+        if q_params.state == 'train':
             W_sensitivity = Sensitivity_Analysis(expand_weight, grad_weight.unsqueeze(-1).unsqueeze(-1), block_size=W_block_size, C=q_params.C_W)
             q_params.sensitivity['W'] += W_sensitivity
             bA_sensitivity = Sensitivity_Analysis(expand_input, grad_input.unsqueeze(-1).unsqueeze(-1), block_size=bA_block_size, C=q_params.C_bA)

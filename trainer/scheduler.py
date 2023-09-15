@@ -7,7 +7,6 @@ from .scheme import Scheme
 class Scheduler:
     '''
     Training Scheduler Module:
-
     '''
     def __init__(self, optimizer:optim.Optimizer, scheme:Scheme, 
                  batches_per_epoch, cur_batch=0, cur_epoch=0) -> None:
