@@ -60,9 +60,9 @@ at::Tensor convolution_backward_weight(
         stride,
         dilation,
         groups,
-        benchmark,
-        deterministic,
-        allow_tf32);
+        true,
+        false,
+        false);
 }
 
 at::Tensor convolution_backward_input(
@@ -85,9 +85,9 @@ at::Tensor convolution_backward_input(
         stride,
         dilation,
         groups,
-        benchmark,
-        deterministic,
-        allow_tf32);
+        true,
+        false,
+        false);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {

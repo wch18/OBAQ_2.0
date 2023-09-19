@@ -15,14 +15,7 @@ idx = 0
 
 cur_dir = os.path.abspath(os.path.curdir)
 
-if torch.__version__ >= '1.10':
-    from torch.nn.grad import conv2d_input, conv2d_weight
-    print("Pytorch version is >= 1.10, using nn.grad as backward function.")
-else:
-    cudnn_convolution = load(name='cudnn_convolution', sources=['./exts/cudnn_convolution.cpp'], verbose=True)
-    conv2d_input = cudnn_convolution.convolution_backward_input
-    conv2d_weight = cudnn_convolution.convolution_backward_weight
-    print("Pytorch version is < 1.10, using cudnn_convolution extension as backward function.")
+cudnn_convolution = load(name='cudnn_convolution', sources=['./exts/cudnn_convolution.cpp'], verbose=True)
 
 class BFP_conv2d(InplaceFunction):
     @staticmethod
@@ -80,7 +73,7 @@ class BFP_conv2d(InplaceFunction):
 
         G_sparsity_counter = q_params.sparsity_counter['G']
         bA_sparsity_counter = q_params.sparsity_counter['bA']
-
+            
         # grad activation quantization 
         if ctx.quantize_grad:
             G_block_size, G_block_bw = q_params.block_size['G'], q_params.int_bwmap['G']
@@ -96,35 +89,16 @@ class BFP_conv2d(InplaceFunction):
         # backward weight quantization
         W_block_size, W_block_bw = q_params.block_size['W'], q_params.int_bwmap['W']
         backward_q_weight = BFPQuant(weight, W_block_size, W_block_bw)
-        # print(weight[:4,:4,0,0].reshape(4,4))
-        # print(W_block_bw[0,0,0,0])
-        # print(backward_q_weight[:4,:4,0,0].reshape(4,4))
 
-        ### For pytorch <= 1.9
-
-        # grad_input = cudnn_convolution.convolution_backward_input(input_size, backward_q_weight, q_grad_output, 
-        #                                                           stride, padding, dilation, groups,
-        #                                                           True, False, False)
-
-        ### For pytorch >= 1.10
-
-        grad_input = conv2d_input(input_size, backward_q_weight, q_grad_output,
-                                  stride, padding, dilation, groups)
+        grad_input = cudnn_convolution.convolution_backward_input(input_size, backward_q_weight, q_grad_output, 
+                                                                  stride, padding, dilation, groups,
+                                                                  True, False, False)
 
         ### - Weight/Bias Update Stage - grad_output * input -> grad_weight
         if ctx.needs_input_grad[1]:
-
-            ### For pytorch <= 1.9
-
-            # grad_weight = cudnn_convolution.convolution_backward_weight(backward_q_input, weight_size, q_grad_output, 
-            #                                                             stride, padding, dilation, groups,
-            #                                                             True, False, False)
-
-            ### For pytorch >= 1.10
-
-            grad_weight = conv2d_weight(backward_q_input, weight_size, q_grad_output,
-                                        stride, padding, dilation, groups)
-            
+            grad_weight = cudnn_convolution.convolution_backward_weight(backward_q_input, weight_size, q_grad_output, 
+                                                                        stride, padding, dilation, groups,
+                                                                        True, False, False)
         else:
             grad_weight = None
 
@@ -286,12 +260,12 @@ class INT_conv2d(InplaceFunction):
         # q_input= FPQuant(raw_input)
         # q_weight = FPQuant(raw_weight)
 
-        grad_input = conv2d_input(input_size, q_weight, q_grad_output, 
-                                  stride, padding, dilation, groups)
-        
-        grad_weight = conv2d_weight(q_input, weight_size, q_grad_output,
-                                    stride, padding, dilation, groups)
-        
+        grad_input = cudnn_convolution.convolution_backward_input(input_size, q_weight, q_grad_output, 
+                                                                stride, padding, dilation, groups,
+                                                                True, False, False)
+        grad_weight = cudnn_convolution.convolution_backward_weight(q_input, weight_size, q_grad_output,
+                                                                stride, padding, dilation, groups,
+                                                                True, False, False)
         norm_grad_weight = grad_weight.norm()
         if norm_grad_weight >= 1:
             grad_weight.div_(norm_grad_weight)
@@ -366,12 +340,12 @@ class FP_conv2d(InplaceFunction):
         q_input= FPQuant(raw_input)
         q_weight = FPQuant(raw_weight)
 
-        grad_input = conv2d_input(input_size, q_weight, q_grad_output, 
-                                  stride, padding, dilation, groups)
-        
-        grad_weight = conv2d_weight(q_input, weight_size, q_grad_output,
-                                    stride, padding, dilation, groups)
-        
+        grad_input = cudnn_convolution.convolution_backward_input(input_size, q_weight, q_grad_output, 
+                                                                stride, padding, dilation, groups,
+                                                                True, False, False)
+        grad_weight = cudnn_convolution.convolution_backward_weight(q_input, weight_size, q_grad_output,
+                                                                stride, padding, dilation, groups,
+                                                                True, False, False)
         norm_grad_weight = grad_weight.norm()
         if norm_grad_weight >= 1:
             grad_weight.div_(norm_grad_weight)

@@ -1,7 +1,7 @@
 import os
 import torchvision.datasets as datasets
 
-__DATASETS_DEFAULT_PATH = '/home/wch/data/cifar100'
+__DATASETS_DEFAULT_PATH = '/datashare01/cv/CIFAR100'
 # __DATASETS_DEFAULT_PATH = '/home/data/ImageNet'
 
 

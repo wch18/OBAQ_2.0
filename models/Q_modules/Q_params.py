@@ -99,6 +99,14 @@ class Q_params:
 
     def set_sparsity_counter(self, datatype, counter=None):
         self.sparsity_counter[datatype] = counter
+
+    def __str__(self):
+        ret = 'block_size: ' + str(self.block_size) + '\n'
+        return ret
+        # print('avg_bwmap:', )
+
+    def __repr__(self):
+        return self.__str__()
     
     # def update_sensitivity(self, datatype):
     #     if self.grad[datatype] is None:

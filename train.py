@@ -30,12 +30,14 @@ parser.add_argument('--seed', type=int, default=123, help='random seed')
 parser.add_argument('--trainer_config', type=str, default=None)
 parser.add_argument('--wandb_project', type=str, default=None)
 parser.add_argument('--local_rank', type=int, default=0)
-parser.add_argument('--ddp')
+parser.add_argument('--log_mode', type=str, default='debug')
+# parser.add_argument('--ddp', type=bool, default=False)
 
 ### logging arguments
 parser.add_argument('--results_dir', default='./results', help='results dir')
 parser.add_argument('--save', default='', help='saved folder')
 parser.add_argument('--log_freq', type=int, default=10)
+parser.add_argument('--save_model_mode', default='best', help='save model mode')
 
 ### dataset arguments
 parser.add_argument('--dataset', type=str, default='cifar100')
@@ -66,7 +68,6 @@ def main(args):
     output_target = sys.stdout if is_main_process else open(os.devnull, 'w')
     print('Global Setting...', file=output_target)
     args.ddp = int(os.getenv('WORLD_SIZE', 0))>1
-
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
     np.random.seed(args.seed)
@@ -99,6 +100,9 @@ def main(args):
             json.dump(args.__dict__, f, indent=4)
 
         wandb_log = args.wandb_project is not None
+
+        wandb_mode = "disabled" if args.wandb_project else "online"
+
         if wandb_log:
             if args.trainer_config is not None:
                 wandb_config = {'config_save':save_path}
@@ -106,7 +110,10 @@ def main(args):
                 wandb_config = args.__dict__
 
             print('Wandb Setting (Optional) ...', file=output_target)
-            wandb.init(project=args.wandb_project, name=save_folder, config=wandb_config)
+            wandb.init(project=args.wandb_project, 
+                       mode=wandb_mode,
+                       name=save_folder, 
+                       config=wandb_config)
 
     print('-------- Data Loading ---------', file=output_target)
     train_transform = get_transform(args.dataset, 
@@ -180,10 +187,21 @@ def main(args):
         print('Test Epoch:\t', epoch,file=output_target)
         trainer.test(epoch)
         trainer.train_logger.log('END TEST')
+
+        if args.save_model_mode == 'best':
+            if trainer.train_logger.top1.avg >= best_prec:
+                model_dir = save_path + '/best'
+                trainer.save_model(model_dir)
+        elif 'every' in args.save_model_mode:
+            freq = int(args.save_model_mode.split('_')[1])
+            if epoch % freq == 0:
+                model_dir = save_path + '/epoch_' + str(epoch)
+                trainer.save_model(model_dir)
+        else:
+            pass
+        
         best_prec = max(best_prec, trainer.train_logger.top1.avg)
-        if epoch % 5 == 0:
-            model_dir = save_path + '/epoch_' + str(epoch)
-            trainer.save_model(model_dir)
+        print('current_best_prec: ', best_prec,file=output_target)
 
     print('--------- Training Done ---------',file=output_target)
     print(best_prec)

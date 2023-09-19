@@ -17,7 +17,7 @@
     },
     "Quantization": {
         "q_type": "BFP",
-        "update_period": 3,
+        "update_period": 1,
         "target_bit_W": 2,
         "target_bit_bA": 2,
         "K_update_mode": "BinarySearch",

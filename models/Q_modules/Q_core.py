@@ -31,6 +31,7 @@ import time
 
 ### BFP Basis
 
+
 def BFP_padding(data, padding_shape):  # 如果形状不符合，对
     device = data.device
     padding_size = list(np.array(padding_shape) - np.array(data.shape))
@@ -42,7 +43,7 @@ def BFP_padding(data, padding_shape):  # 如果形状不符合，对
 
 def get_BFP_shape(data_shape, block_size):
     # print('get_BFP_shape:', data_shape, block_size)
-    return list(np.ceil(np.array(data_shape) / block_size).astype(np.int))
+    return list(np.ceil(np.array(data_shape) / block_size).astype(np.int32))
 
 def get_BFP_paddingshape(data_shape, block_size):
     BFPshape = get_BFP_shape(data_shape, block_size)
@@ -99,13 +100,13 @@ def decompose_tensor(x):
     n = torch.abs(x).view(torch.int32)
     exponent = (n >> 23) - 127
     mantissa = n & torch.tensor(((1 << 23) - 1), dtype=torch.int32)
-    return negative, exponent.float(), mantissa
+    return negative, exponent, mantissa
 
 def BFPQuant(data:torch.tensor, block_size:tuple, block_bw:tuple, stochastic=False, sparsity_counter=None):
 
     if block_size is None or block_bw is None:  # block_size或block_bw为None时，不进行量化
         return data 
-    
+
     with torch.no_grad():
         BFPshape = list(block_bw.shape)
         data_shape = data.shape
@@ -118,22 +119,20 @@ def BFPQuant(data:torch.tensor, block_size:tuple, block_bw:tuple, stochastic=Fal
         # exponent_max = BFP_max(exponent, block_size)
         if sparsity_counter is not None: 
             non_zeros = (exponent_max > -31) & (block_bw != 0)
-            # if data.shape[0] == 128:
-            #     print(torch.count_nonzero(block_bw == 0))
-            #     print(block_bw[:4, :4, 0,0].cpu().numpy())
             sparsity = 1 - torch.count_nonzero(non_zeros) / np.product(BFPshape)
             sparsity_counter.update(sparsity.cpu())
 
         bins = (torch.tensor(1) << (block_bw-1))
-        delta_block = (torch.tensor(1) << (exponent_max + 1)) / bins
-        
-        delta_block = torch.tile(delta_block[:, :, :, :, None, None, None, None], block_size)
+
+        delta_block = torch.pow(2.0, exponent_max+1) / bins
+        delta_block = torch.tile(delta_block[:, :, :, :, None, None, None, None], block_size)  
         bins = torch.tile(bins[:,:,:,:,None, None, None,None], block_size)
         
         data_block = round(data_block, delta_block, stochastic, -bins+1, bins-1)
 
         data_quantized = BFP_deblock(data_block, data_padding_shape)                                  # data deblock
         data_quantized = data_quantized[:data_shape[0], :data_shape[1], :data_shape[2], :data_shape[3]] # clip shape
+        
         return data_quantized
 
 def INTQuant(data:torch.Tensor, bw, stochastic=False, mode='absmax'):

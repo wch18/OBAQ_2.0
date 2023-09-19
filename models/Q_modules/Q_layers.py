@@ -7,19 +7,19 @@ from .Q_params import Q_params
 
 class BFPQConv2d(nn.Conv2d):
     def __init__(self, in_channels, out_channels, kernel_size,
-                 stride=1, padding=0, dilation=1, groups=1, bias=False):
+                 stride=1, padding=0, dilation=1, groups=1, bias=False, q_params=None):
         super().__init__(in_channels, out_channels, kernel_size,
                                       stride, padding, dilation, groups, bias)
-        self.q_params = Q_params()
+        self.q_params = q_params if q_params else Q_params()
 
     def forward(self, input):
         output = BFP_conv2d.apply(input, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups, self.q_params)
         return output
         
 class BFPQLinear(nn.Linear):
-    def __init__(self, in_features, out_features, bias=True):
+    def __init__(self, in_features, out_features, bias=True, q_params=None):
         super().__init__(in_features, out_features, bias)
-        self.q_params = Q_params()
+        self.q_params = q_params if q_params else Q_params()
 
     def forward(self, input):
         output = BFP_linear.apply(input, self.weight, self.bias, self.q_params)
