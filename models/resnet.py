@@ -124,7 +124,7 @@ class ResNet(nn.Module):
         x = self.layer2(x)
         x = self.layer3(x)
         x = self.layer4(x)
-
+        
         x = self.avgpool(x)
         x = x.view(x.size(0), -1)
         x = self.fc(x)
@@ -157,7 +157,7 @@ class ResNet_imagenet(ResNet):
              'weight_decay': 1e-4, 'momentum': 0.9},
             {'epoch': 30, 'lr': 1e-2},
             {'epoch': 60, 'lr': 1e-3, 'weight_decay': 0},
-            {'epoch': 80, 'lr': 1e-4}
+            {'epoch': 90, 'lr': 1e-4}
         ]
 
 
@@ -253,7 +253,8 @@ def resnet(**kwargs):
         if depth == 18:
             return ResNet_cifar100(num_classes=num_classes,
                               block=BasicBlock, depth=depth)
+        elif depth==56:
+            return ResNet_cifar100(num_classes=num_classes,
+                              block=Bottleneck, layers=[3, 4, 6, 3])
         else:
             pass
-            # return ResNet_cifar100(num_classes=num_classes,
-            #                    block=Bottleneck, layers=[3, 4, 6, 3])

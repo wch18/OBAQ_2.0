@@ -89,7 +89,7 @@ class Q_params:
         self.bwmap[datatype] = self.bwmap[datatype] * bwmap_smooth + self.bwmap_new[datatype] * (1-bwmap_smooth)
     
     def update_int_bwmap(self, datatype):
-        self.int_bwmap[datatype] = round(self.bwmap[datatype], scale=2, stochastic=False)
+        self.int_bwmap[datatype] = round(self.bwmap[datatype], scale=2, stochastic=False).int()
 
     def set_sensitivity(self, datatype, sensitivity, sensitivity_smooth=0):
         self.sensitivity[datatype] = sensitivity

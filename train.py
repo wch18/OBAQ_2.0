@@ -15,13 +15,15 @@ import sys
 import wandb
 import time
 import json
-from data.dataset import get_dataset
+from data.dataset import get_dataset, fast_collate
 from data.preprocess import get_transform
 # from models.resnet_BFP import resnet_BFP
 from models import resnet, resnet_BFP
 
 from models.Q_modules import Q_Optimizer
 from trainer import Trainer, get_optimizer, Scheduler, Q_Scheduler, Scheme, Q_Scheme, WandbLogger
+import torch._dynamo
+torch._dynamo.config.suppress_errors = True
 
 parser = argparse.ArgumentParser()
 
@@ -31,6 +33,7 @@ parser.add_argument('--trainer_config', type=str, default=None)
 parser.add_argument('--wandb_project', type=str, default=None)
 parser.add_argument('--local_rank', type=int, default=0)
 parser.add_argument('--log_mode', type=str, default='debug')
+parser.add_argument('--channels-last', type=bool, default=False)
 # parser.add_argument('--ddp', type=bool, default=False)
 
 ### logging arguments
@@ -62,6 +65,8 @@ parser.add_argument('--lr', type=float, default=0.1, help='init lr')
 parser.add_argument('--target_bit_W', type=int, default=2)
 parser.add_argument('--target_bit_bA', type=int, default=2)
 parser.add_argument('--K_update_mode', type=str, default='BinarySearch')
+
+
 
 def main(args):
     is_main_process = args.local_rank == 0
@@ -114,6 +119,12 @@ def main(args):
                        mode=wandb_mode,
                        name=save_folder, 
                        config=wandb_config)
+            
+    if args.channels_last:
+        memory_format = torch.channels_last
+    else:
+        memory_format = torch.contiguous_format
+
 
     print('-------- Data Loading ---------', file=output_target)
     train_transform = get_transform(args.dataset, 
@@ -124,22 +135,27 @@ def main(args):
     train_set = get_dataset(args.dataset, split='train', 
                             transform=train_transform, 
                             datasets_path=args.datapath)
+    
     test_set = get_dataset(args.dataset, split='val', 
                            transform=test_transform, 
                            datasets_path=args.datapath)
-    
+    # collate_fn = lambda b: fast_collate(b, memory_format)
+    collate_fn = None
     train_loader = DataLoader(train_set, 
                               batch_size=args.batch_size, shuffle=True, drop_last=True,
-                              num_workers=args.workers, pin_memory=True)
+                              num_workers=args.workers, pin_memory=True, prefetch_factor=4)
     
     test_loader = DataLoader(test_set,
                              batch_size=args.batch_size, shuffle=False,
-                             num_workers=args.workers, pin_memory=True)
+                             num_workers=args.workers, pin_memory=True, prefetch_factor=4)
     
     print('--------- Model Creating ---------',file=output_target)
 
     # model = resnet_BFP(depth=18, dataset='cifar100').to(args.device)
-    model = resnet_BFP(depth=18, dataset='cifar100').to(args.device)
+    # model = resnet_BFP(depth=18, dataset=args.dataset).to(args.device)
+    model = resnet(depth=50, dataset=args.dataset).cuda().to(memory_format=memory_format)
+    # compile_model = torch.compile(model, mode='reduce-overhead')
+    # model = compile_model
     criterion = nn.CrossEntropyLoss().to(args.device)
     optimizer = get_optimizer(args.optimizer, model.parameters())
     scheme = Scheme(init_lr=args.lr, warm_up_epoch=args.warm_up_epoch)

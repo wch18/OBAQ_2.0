@@ -1,9 +1,23 @@
-CUDA_VISIBLE_DEVICES=1,2,3,4 python -m torch.distributed.launch --nproc_per_node=4 --master_port 29556 train.py \
---save test_DDP \
---dataset cifar100 \
---model resnet_BFP \
---model_config "{'depth': 18}" \
---workers 8 \
---b 120 \
---epochs 95 \
---warm_up_epoch 5
+#!/bin/bash
+
+
+### BFP - Training
+
+# python train.py \
+# --dataset imagenet --datapath /data/cv/ImageNet \
+# --model resnet_BFP --q_type BFP \
+# --trainer_config ./trainer_config_BFP2.json \
+# --device cuda:0 \
+# --save test_ImageNet
+# --wandb_project OBAQ_new
+
+
+### FP32 - Training
+
+python train.py \
+--dataset imagenet --datapath /data/cv/ImageNet --input_size 224 \
+--model resnet --q_type FP32 \
+--batch_size 128 --epochs 120 --workers 16 \
+--trainer_config ./trainer_config_FP32.json \
+--device cuda:0 \
+--save test_ImageNet

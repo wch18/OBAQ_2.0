@@ -5,6 +5,7 @@ from utils import meters
 from .scheduler import Scheduler
 from .Q_scheduler import Q_Scheduler
 from .logger import BasicLogger, WandbLogger
+from data.dataset import data_prefetcher
 import wandb
 import time
 import json
@@ -45,7 +46,7 @@ class Trainer:
         if self.wandb_logger is not None:
             self.wandb_logger.train_logger = self.train_logger
             self.wandb_logger.q_optimizer = self.q_scheduler.q_optimizer
-
+        
         if self.q_scheduler.q_scheme.q_type != 'BFP':
             self.q_scheduler.q_optimizer = None
             return
@@ -65,7 +66,7 @@ class Trainer:
     def forward(self, epoch, dataloader, train=True):
         
         if train:
-            self.model.train()
+            self.model.train(train)
             self.q_scheduler.zero_sensitivity()
         else:
             self.model.eval()
@@ -73,6 +74,7 @@ class Trainer:
         self.train_logger.reset()
         
         time_stamp = time.time()
+
         for batch, (inputs, labels) in enumerate(dataloader):
             
             self.train_logger.data_time.update(time.time()-time_stamp)
@@ -110,6 +112,8 @@ class Trainer:
             self.q_scheduler.step()
         else:
             self.train_logger.update()
+
+    
 
         print('Epoch: {}, lr: {}'.format(epoch, self.scheduler.lr), file=self.output_target)
 

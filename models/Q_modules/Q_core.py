@@ -102,11 +102,11 @@ def decompose_tensor(x):
     mantissa = n & torch.tensor(((1 << 23) - 1), dtype=torch.int32)
     return negative, exponent, mantissa
 
-def BFPQuant(data:torch.tensor, block_size:tuple, block_bw:tuple, stochastic=False, sparsity_counter=None):
+def BFPQuant(data:torch.tensor, block_size:torch.tensor, block_bw:torch.tensor, stochastic=False, sparsity_counter=None):
 
     if block_size is None or block_bw is None:  # block_size或block_bw为None时，不进行量化
         return data 
-
+    
     with torch.no_grad():
         BFPshape = list(block_bw.shape)
         data_shape = data.shape
@@ -121,8 +121,9 @@ def BFPQuant(data:torch.tensor, block_size:tuple, block_bw:tuple, stochastic=Fal
             non_zeros = (exponent_max > -31) & (block_bw != 0)
             sparsity = 1 - torch.count_nonzero(non_zeros) / np.product(BFPshape)
             sparsity_counter.update(sparsity.cpu())
-
-        bins = (torch.tensor(1) << (block_bw-1))
+            
+        bins = (torch.tensor(1) << (block_bw - 1))
+        # bins = torch.pow(2, block_bw-1)
 
         delta_block = torch.pow(2.0, exponent_max+1) / bins
         delta_block = torch.tile(delta_block[:, :, :, :, None, None, None, None], block_size)  

@@ -164,8 +164,8 @@ class ResNet_BFP(nn.Module):
                 layer.q_params.sensitivity['W'] = q_params_dict[name + '_W_sensitivity']
                 layer.q_params.sensitivity['bA'] = q_params_dict[name + '_bA_sensitivity']
 
-    def train(self):
-        super().train()
+    def train(self, mode : bool = True):
+        super().train(mode=mode)
         for m in self.modules():
             if isinstance(m, BFPQConv2d) or isinstance(m, BFPQLinear):
                 m.q_params.state = 'train'
